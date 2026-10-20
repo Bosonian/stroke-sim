@@ -176,17 +176,24 @@ button, input { font: inherit; }
   .map { grid-row: 1; grid-column: 1; }
   .panel {
     position: absolute; left: 0; right: 0; bottom: 0; grid-column: 1;
-    max-height: 46vh; border-radius: 16px 16px 0 0; padding: 6px 16px calc(14px + env(safe-area-inset-bottom));
+    max-height: 36vh; border-radius: 16px 16px 0 0; padding: 6px 16px calc(14px + env(safe-area-inset-bottom));
     gap: 12px; box-shadow: 0 -6px 20px rgba(19, 39, 63, 0.3); transition: max-height 0.25s ease;
   }
-  .panel.open { max-height: 88vh; }
+  .panel.open { max-height: 82vh; }
+  .panel-head, .panel-foot { display: none; }
+  .panel.open .panel-head, .panel.open .panel-foot { display: flex; }
+  .panel.open .panel-foot { display: grid; }
+  .decision { padding: 12px 14px; gap: 6px; }
+  .target-name { font-size: 20px; }
+  .window b { font-size: 24px; }
   .sheet-handle { display: flex; justify-content: center; background: none; border: 0; padding: 8px 0 2px; cursor: pointer; }
   .sheet-grip { width: 44px; height: 5px; border-radius: 3px; background: var(--console-line); }
   .panel-head h1 { font-size: 17px; }
   .clock-time .num { font-size: 30px; }
   .actions li { font-size: 22px; }
   .target-meta b { font-size: 24px; }
-  .watermark strong { font-size: 24px; }
-  .watermark span { font-size: 12px; }
+  .watermark { left: 10px; top: 8px; }
+  .watermark strong { font-size: 18px; }
+  .watermark span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .panel { transition: none; } }

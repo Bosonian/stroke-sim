@@ -137,8 +137,8 @@ function initMap() {
   const map = new maplibregl.Map({
     container: 'map',
     style: BASE_STYLE,
-    center: [10.4, 51.1],
-    zoom: phone ? 4.7 : 5.6,
+    center: phone ? [ui.pos.lon, ui.pos.lat] : [10.4, 51.1],
+    zoom: phone ? 6.4 : 5.6,
     minZoom: 4,
     maxZoom: 15,
     maxBounds: [[1.5, 45.5], [19.5, 56.5]],
@@ -146,6 +146,15 @@ function initMap() {
   });
   ui.map = map;
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  // phone: keep the ambulance visible above the bottom sheet
+  const pad = () => {
+    if (!window.matchMedia('(max-width: 899px)').matches) return map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    map.setPadding({ top: 0, left: 0, right: 0, bottom: $('panel').offsetHeight });
+  };
+  pad();
+  map.jumpTo({ center: [ui.pos.lon, ui.pos.lat] });
+  window.addEventListener('resize', pad);
+  $('panel').addEventListener('transitionend', () => { pad(); map.easeTo({ center: [ui.pos.lon, ui.pos.lat], duration: 300 }); });
 
   let fellBack = false;
   const fallback = () => {
@@ -172,6 +181,12 @@ function initMap() {
       requestAnimationFrame(() => { pending = false; update(); });
     }
   };
+  // tap or click anywhere on the map moves the ambulance there (taps on a hospital open its details instead)
+  map.on('click', (e) => {
+    if (map.getLayer('hospitals') && map.queryRenderedFeatures(e.point, { layers: ['hospitals'] }).length) return;
+    ui.marker.setLngLat(e.lngLat);
+    follow();
+  });
   ui.marker.on('drag', follow);
   ui.marker.on('dragend', follow);
 }
