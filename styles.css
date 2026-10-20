@@ -186,7 +186,7 @@ button, input { font: inherit; }
   .decision { padding: 12px 14px; gap: 6px; }
   .target-name { font-size: 20px; }
   .window b { font-size: 24px; }
-  .sheet-handle { display: flex; justify-content: center; background: none; border: 0; padding: 8px 0 2px; cursor: pointer; }
+  .sheet-handle { display: flex; justify-content: center; background: none; border: 0; padding: 12px 0 10px; margin: -6px -16px 0; cursor: grab; touch-action: none; }
   .sheet-grip { width: 44px; height: 5px; border-radius: 3px; background: var(--console-line); }
   .panel-head h1 { font-size: 17px; }
   .clock-time .num { font-size: 30px; }

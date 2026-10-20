@@ -353,10 +353,44 @@ function bind() {
     update();
   });
   $('aboutBtn').addEventListener('click', () => $('aboutDlg').showModal());
-  $('sheetHandle').addEventListener('click', () => {
-    const open = $('panel').classList.toggle('open');
-    $('sheetHandle').setAttribute('aria-expanded', String(open));
+  bindSheet();
+}
+
+// Phone bottom sheet: drag the handle up or down; it snaps to small, half or full height. A tap toggles half/full.
+const SNAPS = [0.16, 0.38, 0.85];
+function setSheet(px, animate) {
+  const panel = $('panel');
+  panel.style.transition = animate ? '' : 'none';
+  panel.style.maxHeight = `${px}px`;
+  const open = px > window.innerHeight * 0.5;
+  panel.classList.toggle('open', open);
+  $('sheetHandle').setAttribute('aria-expanded', String(open));
+  if (!animate && ui.map) ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: px });
+}
+function bindSheet() {
+  const h = $('sheetHandle');
+  let startY = null, startH = 0, moved = false;
+  h.addEventListener('pointerdown', (e) => {
+    startY = e.clientY; startH = $('panel').offsetHeight; moved = false;
+    h.setPointerCapture(e.pointerId);
   });
+  h.addEventListener('pointermove', (e) => {
+    if (startY == null) return;
+    const dy = startY - e.clientY;
+    if (Math.abs(dy) > 4) moved = true;
+    if (moved) setSheet(Math.min(window.innerHeight * 0.9, Math.max(60, startH + dy)), false);
+  });
+  const end = () => {
+    if (startY == null) return;
+    startY = null;
+    const vh = window.innerHeight, cur = $('panel').offsetHeight;
+    const target = moved
+      ? SNAPS.map((s) => s * vh).reduce((a, b) => (Math.abs(b - cur) < Math.abs(a - cur) ? b : a))
+      : (cur > vh * 0.5 ? SNAPS[1] : SNAPS[2]) * vh;
+    setSheet(target, true);
+  };
+  h.addEventListener('pointerup', end);
+  h.addEventListener('pointercancel', end);
 }
 
 async function main() {
