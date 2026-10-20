@@ -1,15 +1,17 @@
-// Stroke routing simulator: map, draggable ambulance, simulation clock and the decision read-out.
-// Logic lives in sim.js / decide.js (tested); this file wires it to the page.
+// Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
+// Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
 import { config } from '../config.js';
 import { strings } from './i18n.js';
 import { loadGrid } from './grid.js';
 import { hospitalFeatures, siteKind } from './hospitals.js';
-import { expectedResultAt, resultShown, atScene, likelyBeforeArrival, arrivalAt, imagingTimes, decisionWindow, updateLeg, clampResultAt } from './sim.js';
-import { decide, range, fmtDetour } from './decide.js';
-import { fetchLive, routeLabel } from './route.js';
+import { range } from './decide.js';
+import { fetchLive, fetchRoute, routeLabel } from './route.js';
+import { resultMinute, splitRoute, story } from './story.js';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
+const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
 const BASE_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 const FALLBACK_STYLE = {
   version: 8,
@@ -17,9 +19,10 @@ const FALLBACK_STYLE = {
   sources: {},
   layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#E9EDF1' } }],
 };
-const RATES = [1, 5, 20];
-const MAX_MIN = config.maxMin;
 const KM_LAT = 1 / 111.2; // degrees latitude per km
+const NAT_BOX = { west: 5.5, east: 15.5, south: 47.0, north: 55.2 };
+const NAT_COORDS = [[NAT_BOX.west, NAT_BOX.north], [NAT_BOX.east, NAT_BOX.north], [NAT_BOX.east, NAT_BOX.south], [NAT_BOX.west, NAT_BOX.south]];
+const BLANK = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -28,24 +31,24 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
-const initial = () => ({ t: 0, testStart: null, leaveAt: null, resultAt: null, result: 'pending', k: config.kDefault, A: config.A, leg: null });
-const state = initial();
+const state = { s: config.drawDefault, result: config.resultDefault, k: config.kDefault };
 const ui = {
   lang: store.get('sim-lang') === 'de' ? 'de' : 'en',
-  playing: false,
-  rate: 5,
   pos: { ...config.start },
   grid: null,
   hospitals: [],
   map: null,
   marker: null,
+  resultMarker: null,
   snap: null, // phone sheet: index into SNAPS once the user has moved it
   moveTo: null, // set by initMap: (lon, lat, pan) => void
   live: null, // { key, data } road routes for the position `key`
+  natKey: null, // s|k of the national image on the map
 };
 const EX = config.excludedSites;
 const posKey = () => `${ui.pos.lon.toFixed(4)},${ui.pos.lat.toFixed(4)}`;
 const liveCache = new Map();
+const branchCache = new Map(); // result point -> neurosurgery road routes
 let liveTimer = null;
 
 /** Ask for road routes once the ambulance has stopped moving; the grid answers meanwhile. */
@@ -68,6 +71,20 @@ function scheduleLive() {
   }, config.routing.debounceMs);
 }
 
+/** Road route from the result point to neurosurgery; undefined while loading, null if it failed. */
+function branchRoute(p, nsIdx) {
+  const key = `${p[0].toFixed(4)},${p[1].toFixed(4)}|${nsIdx}`;
+  if (branchCache.has(key)) return branchCache.get(key);
+  branchCache.set(key, undefined);
+  const h = ui.hospitals[nsIdx];
+  fetchRoute(p, [h.lon, h.lat], config).then((r) => {
+    if (branchCache.size > 300) branchCache.clear();
+    branchCache.set(key, r);
+    update();
+  });
+  return undefined;
+}
+
 const L = () => strings[ui.lang];
 
 // ---------- static text and controls ----------
@@ -79,14 +96,23 @@ function applyStatic() {
     const v = s[el.dataset.t];
     if (typeof v === 'string') el.textContent = v;
   });
-  $('playBtn').textContent = ui.playing ? s.pause : s.play;
+  buildSegment('drawSeg', 'draw', config.draws, (v) => s.draws[v], state.s);
   buildSegment('resultSeg', 'result', config.results, (v) => s.results[v], state.result);
   buildSegment('speedSeg', 'speed', config.kValues, (v) => s.speeds[v], state.k);
-  $('legend').innerHTML = ['su', 'ns', 'both']
-    .map((k) => `<li><i style="background:${KIND_COLOR[k]}"></i>${esc(s.legend[k])}</li>`).join('');
-  $('estimateNote').textContent = `${s.estimateNote} ${s.connectorNote}`;
-  $('aboutBody').innerHTML = [...s.aboutBody, s.routingAbout, s.imagingNote(config.doorToImaging), s.transitNote,
-    s.combinedUnavailable, s.gapNote, `${s.excludedLabel} ${Object.values(EX).map((v) => v.split(':')[0]).join('; ')}.`, config.model.source]
+  const dot = (c) => `<i style="background:${c}"></i>`;
+  const bar = (c, dash) => `<i class="bar${dash ? ' dash' : ''}" style="--c:${c}"></i>`;
+  $('legend').innerHTML = [
+    ...['su', 'ns', 'both'].map((k) => `<li>${dot(KIND_COLOR[k])}${esc(s.legend[k])}</li>`),
+    `<li>${bar(LINE.via, true)}${esc(s.lines.via)}</li>`,
+    `<li>${bar(LINE.direct)}${esc(s.lines.direct)}</li>`,
+    `<li><i class="tube-dot"></i>${esc(s.resultMarker)}</li>`,
+  ].join('');
+  $('natTitle').textContent = s.national.title;
+  $('natList').innerHTML = [15, 10, 5, 0].map((v) => `<li>${dot(DRAW_COLORS[v])}${esc(s.national[v])}</li>`).join('')
+    + `<li>${dot(LATE_GREY)}${esc(s.national.late)}</li>`;
+  $('aboutBody').innerHTML = [...s.aboutBody, s.stayNote(config.stay), config.stay.source, config.stay.context, s.routingAbout,
+    s.imagingNote(config.doorToImaging), s.combinedUnavailable, s.gapNote,
+    `${s.excludedLabel} ${Object.values(EX).map((v) => v.split(':')[0]).join('; ')}.`, config.model.source]
     .map((p) => `<p>${esc(p)}</p>`).join('');
   $('placeSel').innerHTML = `<option value="">–</option>`
     + config.places.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
@@ -101,10 +127,6 @@ function buildSegment(id, name, values, label, current) {
     lab.innerHTML = `<input type="radio" name="${name}" value="${v}"${String(v) === String(current) ? ' checked' : ''}><span>${esc(label(v))}</span>`;
     fs.appendChild(lab);
   }
-}
-
-function buildRates() {
-  $('rateSeg').innerHTML = RATES.map((r) => `<button type="button" data-rate="${r}" aria-pressed="${r === ui.rate}">${r}×</button>`).join('');
 }
 
 // ---------- map ----------
@@ -124,24 +146,64 @@ function ambulanceEl() {
   return el;
 }
 
+function resultEl() {
+  const el = document.createElement('div');
+  el.className = 'result-marker';
+  el.innerHTML = `<span class="tube" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v11.5a2 2 0 0 0 4 0V3" fill="none" stroke="#18222F" stroke-width="1.8" stroke-linecap="round"/><path d="M10 10h4v4.5a2 2 0 0 1-4 0z" fill="#C2312A"/></svg></span><span class="result-label"></span>`;
+  return el;
+}
+
+/** Paint the national view for the chosen blood draw and speed (skipped when nothing changed). */
+function renderNational() {
+  const src = ui.map && ui.map.getSource('national');
+  const key = `${state.s}|${state.k}`;
+  if (!src || !ui.grid || ui.natKey === key) return;
+  ui.natKey = key;
+  const width = 640;
+  const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const height = Math.round((width * (mercY(NAT_BOX.north) - mercY(NAT_BOX.south))) / (((NAT_BOX.east - NAT_BOX.west) * Math.PI) / 180));
+  const px = nationalPixels(ui.grid, { ...NAT_BOX, width, height, k: state.k, s: state.s, A: config.A });
+  const cv = document.createElement('canvas');
+  cv.width = width; cv.height = height;
+  cv.getContext('2d').putImageData(new ImageData(px, width, height), 0, 0);
+  src.updateImage({ url: cv.toDataURL(), coordinates: NAT_COORDS });
+}
+
+function showNatLegend() {
+  const on = !!ui.map && !!ui.grid && ui.map.getZoom() < config.nationalMaxZoom;
+  $('natLegend').hidden = !on;
+}
+
 function addLayers(map) {
   if (map.getSource('hospitals')) return;
+  map.addSource('national', { type: 'image', url: BLANK, coordinates: NAT_COORDS });
+  map.addLayer({
+    id: 'national', type: 'raster', source: 'national', maxzoom: config.nationalMaxZoom,
+    paint: { 'raster-opacity': 0.8, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  });
+  ui.natKey = null;
   map.addSource('links', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addSource('hospitals', { type: 'geojson', data: hospitalFeatures(ui.hospitals, EX) });
   map.addLayer({
-    id: 'links-alt', type: 'line', source: 'links', filter: ['==', ['get', 'role'], 'alt'],
-    paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.55, 'line-dasharray': [2, 2] },
+    id: 'links-via', type: 'line', source: 'links', filter: ['==', ['get', 'role'], 'via'],
+    layout: { 'line-cap': 'round' },
+    paint: { 'line-color': LINE.via, 'line-width': 3, 'line-dasharray': [1.5, 1.5] },
   });
   map.addLayer({
-    id: 'links-target', type: 'line', source: 'links', filter: ['==', ['get', 'role'], 'target'],
+    id: 'links-drive', type: 'line', source: 'links', filter: ['==', ['get', 'role'], 'drive'],
     layout: { 'line-cap': 'round' },
-    paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.9 },
+    paint: { 'line-color': LINE.drive, 'line-width': 4.5 },
+  });
+  map.addLayer({
+    id: 'links-direct', type: 'line', source: 'links', filter: ['==', ['get', 'role'], 'direct'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': LINE.direct, 'line-width': 6.5 },
   });
   map.addLayer({
     id: 'links-label', type: 'symbol', source: 'links', filter: ['!=', ['get', 'label'], ''],
     layout: {
       'symbol-placement': 'line-center', 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'],
-      'text-size': ['case', ['==', ['get', 'role'], 'target'], 14, 12], 'text-allow-overlap': true,
+      'text-size': ['case', ['==', ['get', 'role'], 'direct'], 15, 13], 'text-allow-overlap': true,
     },
     paint: { 'text-color': '#18222F', 'text-halo-color': '#ffffff', 'text-halo-width': 2.4 },
   });
@@ -205,10 +267,12 @@ function initMap() {
   map.on('error', () => { if (!map.isStyleLoaded()) fallback(); });
   setTimeout(() => { if (!map.isStyleLoaded()) fallback(); }, 8000);
   map.on('style.load', () => { addLayers(map); update(); });
+  map.on('zoom', showNatLegend);
   map.on('click', 'hospitals', hospitalPopup);
   map.on('mouseenter', 'hospitals', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'hospitals', () => { map.getCanvas().style.cursor = ''; });
 
+  ui.resultMarker = new maplibregl.Marker({ element: resultEl(), anchor: 'bottom' });
   ui.marker = new maplibregl.Marker({ element: ambulanceEl(), draggable: true })
     .setLngLat([ui.pos.lon, ui.pos.lat])
     .addTo(map);
@@ -247,173 +311,140 @@ function initMap() {
   });
 }
 
-// ---------- the decision read-out ----------
+// ---------- the map story and the card ----------
 function setLinks(features) {
   const src = ui.map && ui.map.getSource('links');
   if (src) src.setData({ type: 'FeatureCollection', features });
 }
 
-// road route with a "7 min · 4.2 km" label when live; otherwise a straight, unlabelled direction line
-function link(role, h, kind, opt) {
-  const road = opt && opt.geom;
-  return {
-    type: 'Feature',
-    properties: { role, color: KIND_COLOR[kind], label: road ? routeLabel(opt.sec, opt.m, state.k) : '' },
-    geometry: { type: 'LineString', coordinates: road ? [[ui.pos.lon, ui.pos.lat], ...opt.geom] : [[ui.pos.lon, ui.pos.lat], [h.lon, h.lat]] },
-  };
-}
-
+const line = (role, coords, label = '') => ({ type: 'Feature', properties: { role, label }, geometry: { type: 'LineString', coordinates: coords } });
+const ll = (h) => [h.lon, h.lat];
 const kmText = (opt) => (opt.km != null && opt.geom ? `, ${opt.km < 10 ? opt.km.toFixed(1) : Math.round(opt.km)} km` : '');
 
-function optionLine(key, opt, d) {
-  const s = L();
+function optionLine(label, opt) {
   const h = ui.hospitals[opt.idx];
   const r = range(opt.t, config.kValues, state.k);
-  const detour = fmtDetour((opt.t - d.options.su.t) * state.k, ui.lang);
-  return `<span>${esc(s.target[key])}: <b>${esc(h.name)}</b>, ${r.mid} min (${r.lo}–${r.hi})${kmText(opt)}, ${esc(detour)}</span>`;
+  return `<span>${esc(label)}: <b>${esc(h.name)}</b>, ${r.mid} min (${r.lo}–${r.hi})${kmText(opt)}</span>`;
+}
+
+function setBadge(main, sub) {
+  $('badge').hidden = !main;
+  $('badgeMain').textContent = main || '';
+  $('badgeSub').textContent = sub || '';
+  $('badgeSub').hidden = !sub;
+}
+
+function clearStory(notice) {
+  setBadge('', '');
+  setLinks([]);
+  if (ui.resultMarker) ui.resultMarker.remove();
+  $('decisionLine').textContent = '';
+  $('targetName').textContent = '';
+  $('savingLine').textContent = '';
+  $('timingLine').textContent = '';
+  $('altBlock').innerHTML = '';
+  $('noticeLine').textContent = notice;
 }
 
 function update() {
   const s = L();
-  const shown = resultShown(state);
-  const exp = expectedResultAt(state);
+  renderNational();
+  showNatLegend();
+  $('shareLine').textContent = state.k === config.shares.k
+    ? `${s.shareLine(config.shares.values[state.s])} ${s.shareNote}` : '';
+  const tier = config.tiers[state.result];
+  $('decision').dataset.tier = state.result;
+  $('tierLine').textContent = state.result === 'below' ? s.tierBelow : `ICH ${s.results[state.result]}`;
+  $('fpLine').textContent = tier.positive ? s[state.result === 't71' ? 'fp71' : 'fpHigher'](config.model.ppv) : '';
+  $('stayLine').textContent = `${s.stayNote(config.stay)} ${config.stay.source}. ${config.stay.context}`;
+  $('combinedLine').textContent = tier.positive && !config.combinedRoutes ? s.combinedUnavailable : '';
+
   // live road routes for this exact position if we have them; otherwise the 1 km grid
   const live = ui.live && ui.live.key === posKey() ? ui.live.data : null;
-  let look = live || (ui.grid ? ui.grid.lookup(ui.pos.lon, ui.pos.lat) : null);
-  const excludedHere = !live && look && EX[ui.hospitals[look.ns.idx].id];
-  if (excludedHere) look = null;
-  const d = decide(look, shown, config);
+  const look = live || (ui.grid ? ui.grid.lookup(ui.pos.lon, ui.pos.lat) : null);
   $('estimateNote').textContent = live ? s.routeNoteLive : `${s.estimateNote} ${s.connectorNote}`;
-
-  // clock
-  $('clockMin').textContent = state.t.toFixed(1);
-  $('scrub').value = state.t;
-  $('whereLine').textContent = atScene(state) ? s.atScene : s.inTransit;
-  $('testLine').textContent = state.testStart == null || state.t < state.testStart ? s.testIdle
-    : shown !== 'pending' ? s.testResult : s.testRunning(Math.floor(state.t - state.testStart));
-  $('expectLine').textContent = exp != null && shown === 'pending' ? s.expectedAt(Math.round(exp)) : '';
-  $('startBtn').disabled = state.testStart != null;
-  $('leaveBtn').disabled = state.leaveAt != null;
-  if (document.activeElement !== $('resultAt')) $('resultAt').value = exp != null ? Math.round(exp) : '';
-
-  // tier
-  const tier = config.tiers[shown];
-  $('decision').dataset.tier = shown;
-  $('tierLine').textContent = shown === 'pending' ? s.tierPending
-    : shown === 'below' ? s.tierBelow : `ICH ${s.results[shown]}`;
-  $('actionList').innerHTML = tier.actions.map((a) => `<li>${esc(s.actions[a])}</li>`).join('');
-
-  const show = (on) => { $('targetBlock').hidden = !on; };
-  $('likelyLine').textContent = '';
-  $('windowLine').innerHTML = '';
-  $('imagingLine').textContent = '';
-  $('fpLine').textContent = '';
-  $('altBlock').innerHTML = '';
-  $('combinedLine').textContent = '';
-  if (!d) {
-    show(false);
-    $('noticeLine').textContent = excludedHere ? s.liveNeeded : !ui.grid ? `${s.noData} ${s.dragHint}` : s.noRoad;
-    setLinks([]);
-    return;
-  }
-  show(true);
+  if (!look) return clearStory(!ui.grid ? `${s.noData} ${s.dragHint}` : s.noRoad);
+  if (!live && EX[ui.hospitals[look.ns.idx].id]) return clearStory(s.liveNeeded);
   $('noticeLine').textContent = '';
-  const tgt = d.options[d.target];
-  const h = ui.hospitals[tgt.idx];
-  const kind = siteKind(ui.hospitals, tgt.idx, EX);
-  const r = range(tgt.t, config.kValues, state.k);
-  $('targetKind').textContent = s.target[d.target];
-  $('targetKind').style.setProperty('--kind', KIND_COLOR[kind]);
-  $('targetName').textContent = `${h.name}, ${h.city}`;
-  $('targetMeta').innerHTML = `${esc(s.drive)} <b>${r.mid} min</b> (${r.lo}–${r.hi})${kmText(tgt)}`
-    + (d.target === 'su' ? '' : `<br>${esc(fmtDetour(d.detourMin * state.k, ui.lang))} ${esc(s.detourVsSu)}`);
-  $('targetSu').textContent = d.target === 'su' ? '' : kind === 'both' ? s.hasSu : s.noSu;
 
-  const driveLeft = tgt.t * state.k;
-  // in transit: arrival is fixed by the current leg; a new position, target or speed starts a new leg now
-  state.leg = updateLeg(state, `${tgt.idx}|${state.k}|${posKey()}|${live ? 'live' : 'grid'}`, driveLeft);
-  const arr = arrivalAt(state, driveLeft);
-  const arrived = !atScene(state) && state.t >= arr;
-  if (!atScene(state)) $('whereLine').textContent = arrived ? s.arrived : s.arriveIn(Math.ceil(arr - state.t));
-  const likely = likelyBeforeArrival(state, driveLeft);
-  if (likely != null && shown === 'pending' && !arrived) $('likelyLine').textContent = likely ? s.likelyYes : s.likelyNo;
-  const dti = config.doorToImaging;
-  const img = imagingTimes(state, driveLeft, dti);
-  const rnd = (x) => ({ fast: Math.round(x.fast), median: Math.round(x.median), slow: Math.round(x.slow) });
-  $('imagingLine').textContent = `${s.arrivalLine(Math.round(arr))}. ${s.imagingLine(rnd(img), dti)}.`;
-  const win = decisionWindow(state, driveLeft, dti.p25);
-  const winMed = decisionWindow(state, driveLeft, dti.median);
-  if (shown !== 'pending' && state.t < img.fast) {
-    $('windowLine').innerHTML = `<b>${Math.round(img.fast - state.t)} min</b> ${esc(s.windowLeft(dti, Math.round(img.median - state.t)))}`;
-  } else if (win != null && shown === 'pending') {
-    $('windowLine').innerHTML = win >= 0
-      ? `<b>${Math.round(win)} min</b> ${esc(s.windowPending(dti, Math.round(winMed)))}`
-      : esc(s.windowAfter(Math.round(-win), dti));
+  const su = ui.hospitals[look.su.idx];
+  const ns = ui.hospitals[look.ns.idx];
+  const same = look.ns.idx === look.su.idx || ns.su_partner === su.id;
+  const origin = [ui.pos.lon, ui.pos.lat];
+  const resultMin = resultMinute(state.s, config.A);
+
+  // where the result arrives: on the road to the stroke unit, resultMin minutes after leaving (drive time / k)
+  const suCoords = live && live.su.geom ? [origin, ...live.su.geom] : [origin, ll(su)];
+  const suSeg = live && live.su.geom && live.su.segDur ? [0, ...live.su.segDur] : null;
+  const split = splitRoute(suCoords, suSeg, (resultMin * 60) / state.k, look.su.t * 60);
+
+  let branch = null; // road route result point -> neurosurgery (k = 1)
+  if (live && !same && resultMin === 0 && live.ns.geom) branch = { sec: live.ns.sec, m: live.ns.m, geom: [origin, ...live.ns.geom] };
+  else if (live && !same && resultMin > 0 && split.after.length > 1) {
+    const r = branchRoute(split.point, look.ns.idx);
+    if (r) branch = { ...r, geom: [split.point, ...r.geom] };
   }
-  if (d.fpKey) $('fpLine').textContent = s[d.fpKey](config.model.ppv);
-  if (tier.positive && !config.combinedRoutes) $('combinedLine').textContent = s.combinedUnavailable;
+  const st = story({
+    s: state.s, A: config.A, k: state.k, tier: state.result, look, same, stay: config.stay.median,
+    suNsMin: live ? (live.suNs ? live.suNs.sec / 60 : same ? 0 : null) : null,
+    pNsMin: branch ? branch.sec / 60 : null,
+  });
 
-  // alternatives: always show the other options, so the detour question stays visible
-  const lines = [];
-  const links = [link('target', h, kind, tgt)];
-  for (const key of ['ns', 'both', 'su']) {
-    const opt = d.options[key];
-    if (key === 'both' && !config.combinedRoutes) continue;
-    if (key === d.target || !opt || opt.idx === tgt.idx) continue;
-    if (key === 'su' && d.target === 'su') continue;
-    if (lines.some((l) => l.idx === opt.idx)) continue;
-    lines.push({ idx: opt.idx, html: optionLine(key, opt, d) });
-    links.push(link('alt', ui.hospitals[opt.idx], siteKind(ui.hospitals, opt.idx, EX), opt));
-  }
-  $('altBlock').innerHTML = lines.map((l) => l.html).join('');
-  setLinks(links);
-}
-
-// ---------- clock ----------
-let last = null;
-function tick(ts) {
-  if (ui.playing) {
-    if (last != null) {
-      state.t = Math.min(MAX_MIN, state.t + ((ts - last) / 60000) * ui.rate);
-      if (state.t >= MAX_MIN) setPlaying(false);
-      update();
-    }
-    last = ts;
+  // map lines
+  const suLabel = live && live.su.geom ? routeLabel(live.su.sec, live.su.m, state.k) : '';
+  const transfer = !same ? line('via', live && live.suNs ? [ll(su), ...live.suNs.geom] : [ll(su), ll(ns)],
+    live && live.suNs ? routeLabel(live.suNs.sec, live.suNs.m, state.k) : '') : null;
+  const feats = [];
+  if (st.mode === 'turn') {
+    if (split.before.length > 1) feats.push(line('drive', split.before));
+    feats.push(line('via', split.after, suLabel));
+    if (transfer) feats.push(transfer);
+    feats.push(line('direct', branch ? branch.geom : [split.point, ll(ns)], branch ? routeLabel(branch.sec, branch.m, state.k) : ''));
   } else {
-    last = null;
+    feats.push(line('drive', suCoords, suLabel));
+    if (st.mode === 'late' && transfer) feats.push(transfer);
   }
-  requestAnimationFrame(tick);
-}
+  setLinks(feats);
 
-function setPlaying(on) {
-  ui.playing = on;
-  $('playBtn').setAttribute('aria-pressed', String(on));
-  $('playBtn').textContent = on ? L().pause : L().play;
+  // the test tube: where the result arrives (at the stroke unit, with "+N min", when it comes too late)
+  const late = st.lead < 0;
+  const at = late ? suCoords[suCoords.length - 1] : split.point;
+  if (ui.resultMarker && ui.map) {
+    const el = ui.resultMarker.getElement();
+    el.querySelector('.result-label').textContent = s.results[state.result] + (late ? ` · +${Math.ceil(-st.lead)} min` : '');
+    el.setAttribute('aria-label', s.resultMarker);
+    el.title = s.resultMarker;
+    ui.resultMarker.setLngLat(at).addTo(ui.map);
+  }
+
+  // badge on the map and the three card lines
+  let main, sub;
+  if (st.mode === 'turn' && st.savingMin != null) {
+    main = s.badgeTurn(Math.round(st.savingMin));
+    sub = s.badgeTurnSub({ withMin: Math.round(st.withMin), driveWithout: Math.round(st.withoutMin - config.stay.median), stay: config.stay.median });
+  } else if (st.mode === 'turn') {
+    main = s.badgeTurnOffline;
+    sub = live ? '' : s.badgeTurnOfflineSub;
+  } else if (st.mode === 'late') {
+    main = s.badgeLate(Math.ceil(st.lateMin));
+    sub = s.badgeLateSub;
+  } else if (st.mode === 'same') {
+    main = s.badgeSame; sub = s.badgeSameSub;
+  } else {
+    main = s.badgeBelow; sub = s.badgeBelowSub;
+  }
+  setBadge(main, sub);
+  const target = st.mode === 'turn' ? ns : su;
+  $('decisionLine').textContent = st.mode === 'turn' ? s.decisionTurn : st.mode === 'same' ? s.decisionSame : s.decisionSu;
+  $('targetName').textContent = `${target.name}, ${target.city}`;
+  $('savingLine').textContent = main;
+  $('timingLine').textContent = `${s.resultReady(Math.round(resultMin))}. ${late ? s.afterLine(Math.ceil(-st.lead)) : s.leadLine(Math.round(st.lead))}`;
+  $('altBlock').innerHTML = optionLine(s.target.su, look.su) + (same ? '' : optionLine(s.target.ns, look.ns));
 }
 
 // ---------- events ----------
 function bind() {
-  $('startBtn').addEventListener('click', () => { state.testStart = state.t; state.resultAt = null; update(); });
-  $('leaveBtn').addEventListener('click', () => { state.leaveAt = state.t; update(); });
-  $('resetBtn').addEventListener('click', () => {
-    Object.assign(state, initial(), { k: state.k, result: state.result });
-    setPlaying(false);
-    update();
-  });
-  $('playBtn').addEventListener('click', () => setPlaying(!ui.playing));
-  $('rateSeg').addEventListener('click', (e) => {
-    const r = Number(e.target.dataset.rate);
-    if (!r) return;
-    ui.rate = r;
-    buildRates();
-  });
-  $('scrub').max = MAX_MIN;
-  $('scrub').addEventListener('input', (e) => { state.t = Number(e.target.value); update(); });
-  $('resultAt').addEventListener('change', (e) => {
-    const v = e.target.value === '' ? null : Number(e.target.value);
-    state.resultAt = clampResultAt(v, state.testStart, MAX_MIN);
-    update();
-  });
+  $('drawSeg').addEventListener('change', (e) => { state.s = Number(e.target.value); update(); });
   $('resultSeg').addEventListener('change', (e) => { state.result = e.target.value; update(); });
   $('speedSeg').addEventListener('change', (e) => { state.k = Number(e.target.value); update(); });
   $('langBtn').addEventListener('click', () => {
@@ -495,7 +526,6 @@ function bindSheet() {
 
 async function main() {
   applyStatic();
-  buildRates();
   bind();
   try {
     if (typeof maplibregl === 'undefined') throw new Error('map library not loaded');
@@ -506,13 +536,11 @@ async function main() {
     initMap();
   } catch (err) {
     console.error(err);
-    $('targetBlock').hidden = true;
     $('noticeLine').textContent = L().loadError;
     return;
   }
   update();
   scheduleLive();
-  requestAnimationFrame(tick);
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* app works without offline cache */ });
   }

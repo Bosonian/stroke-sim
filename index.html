@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <main class="app">
@@ -24,7 +24,18 @@
       <span data-t="watermark2">Teaching and research only. Not for clinical use.</span>
     </div>
 
-    <aside class="panel" id="panel" aria-label="Simulation controls and decision">
+    <div class="badge" id="badge" role="status" aria-live="polite" hidden>
+      <strong id="badgeMain"></strong>
+      <span id="badgeSub"></span>
+    </div>
+
+    <div class="natlegend" id="natLegend" hidden>
+      <p class="natlegend-title" id="natTitle"></p>
+      <ul id="natList"></ul>
+      <p class="natlegend-share" id="shareLine"></p>
+    </div>
+
+    <aside class="panel" id="panel" aria-label="Blood-draw timing and routing decision">
       <button class="sheet-handle" id="sheetHandle" aria-expanded="false" aria-controls="panel">
         <span class="sheet-grip" aria-hidden="true"></span>
         <span class="visually-hidden">Show or hide details</span>
@@ -35,66 +46,36 @@
         <button class="link" id="langBtn" data-t="language">Deutsch</button>
       </header>
 
-      <section class="clock" aria-live="polite">
-        <div class="clock-time"><span data-t="minute">Minute</span> <span id="clockMin" class="num">0.0</span></div>
-        <div class="clock-status">
-          <span id="whereLine"></span>
-          <span id="testLine"></span>
-          <span id="expectLine"></span>
-        </div>
-      </section>
+      <fieldset class="segmented draws" id="drawSeg">
+        <legend data-t="drawLabel">Blood drawn</legend>
+      </fieldset>
 
       <section class="decision" id="decision" aria-live="polite">
-        <p class="scenario" id="scenarioLine" data-t="scenarioLabel">Teaching simulation: assumed scenario policy, not a clinical recommendation.</p>
         <p class="tier" id="tierLine"></p>
-        <ul class="actions" id="actionList"></ul>
-        <div class="target" id="targetBlock">
-          <p class="target-kind" id="targetKind"></p>
-          <p class="target-name" id="targetName"></p>
-          <p class="target-meta" id="targetMeta"></p>
-          <p class="target-su" id="targetSu"></p>
-        </div>
-        <p class="window" id="windowLine"></p>
-        <p class="likely" id="likelyLine"></p>
-        <p class="likely" id="imagingLine"></p>
-        <p class="fp" id="fpLine"></p>
-        <div class="alt" id="altBlock"></div>
-        <p class="combined" id="combinedLine"></p>
+        <p class="verdict" id="decisionLine"></p>
+        <p class="target-name" id="targetName"></p>
+        <p class="saving" id="savingLine"></p>
+        <p class="timing" id="timingLine"></p>
         <p class="notice" id="noticeLine"></p>
-        <button class="link evidence" id="evidenceBtn" data-t="evidenceLink">Evidence and limits</button>
       </section>
 
-      <section class="controls">
-        <label class="inline place"><span data-t="jumpTo">Jump to a place</span>
-          <select id="placeSel"></select>
-        </label>
-
-        <div class="row buttons">
-          <button id="startBtn" class="btn primary" data-t="startTest">Test started</button>
-          <button id="leaveBtn" class="btn" data-t="leave">Leaving scene</button>
-          <button id="resetBtn" class="btn quiet" data-t="reset">Reset</button>
-        </div>
-
+      <details class="more" id="details">
+        <summary data-t="details">Details</summary>
         <fieldset class="segmented" id="resultSeg">
-          <legend data-t="resultLabel">Result the device will show</legend>
+          <legend data-t="resultLabel">Test result: probability of a bleed</legend>
         </fieldset>
-
-        <div class="row">
-          <label class="inline"><span data-t="resultAtLabel">Result at minute</span>
-            <input id="resultAt" type="number" min="0" max="120" step="1" inputmode="numeric">
-          </label>
-        </div>
-
         <fieldset class="segmented" id="speedSeg">
           <legend data-t="speedLabel">Driving speed</legend>
         </fieldset>
-
-        <div class="row transport">
-          <button id="playBtn" class="btn" aria-pressed="false" data-t="play">Play</button>
-          <div class="rates" id="rateSeg" role="group" aria-label="Playback speed"></div>
-          <input id="scrub" type="range" min="0" max="90" step="0.1" value="0" aria-label="Minute">
-        </div>
-      </section>
+        <label class="inline place"><span data-t="jumpTo">Jump to a place</span>
+          <select id="placeSel"></select>
+        </label>
+        <div class="alt" id="altBlock"></div>
+        <p class="fp" id="fpLine"></p>
+        <p class="fp" id="stayLine"></p>
+        <p class="fp" id="combinedLine"></p>
+        <button class="link evidence" id="evidenceBtn" data-t="evidenceLink">Evidence and limits</button>
+      </details>
 
       <footer class="panel-foot">
         <ul class="legend" id="legend"></ul>
@@ -111,6 +92,6 @@
   </main>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script type="module" src="js/app.js?v=7"></script>
+  <script type="module" src="js/app.js?v=8"></script>
 </body>
 </html>

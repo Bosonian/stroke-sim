@@ -6,10 +6,14 @@ export const config = {
   bothMaxExtraMin: 10, // prefer the hospital with neurosurgery AND stroke unit if at most this much further
   combinedRoutes: false, // true only once routes to the nearest combined centre are built (design 8.1); until then
   //                        the drive-time grid holds only the nearest stroke unit and nearest neurosurgery site
-  maxMin: 120, // end of the timeline; the result-at input has the same limit
-  results: ['pending', 'below', 't71', 't81', 't91'],
+  // when the blood is drawn: minutes before the ambulance leaves (s in the registered model; 15 = proposed workflow)
+  draws: [15, 10, 5, 0],
+  drawDefault: 15,
+  // registered results, Table 2 (Germany, k = 1.0): share of people with the result before arrival, by s
+  shares: { k: 1.0, values: { 15: 100, 10: 92.4, 5: 70.8, 0: 49.2 }, source: 'Registered results, Table 2 (OSF osf.io/ew8fj)' },
+  results: ['below', 't71', 't81', 't91'],
+  resultDefault: 't71',
   tiers: {
-    pending: { positive: false, actions: [] },
     below: { positive: false, actions: ['standard'] },
     t71: { positive: true, actions: ['ns'] },
     t81: { positive: true, actions: ['ns', 'bp'] },
@@ -27,6 +31,14 @@ export const config = {
     p25: 21, median: 32, p75: 50,
     source: 'Weiss D, et al. BMC Emerg Med. 2024;24:224 (Table 1)',
   },
+  // Stay at the stroke unit before transfer (door-in-door-out: arrival to departure at the first hospital).
+  // Best available bleed-specific study (evidence review in docs/superpowers/specs/2026-10-20-blood-draw-map-design.md).
+  stay: {
+    median: 155, p25: 101, p75: 243,
+    source: 'Royan R, et al. Ann Emerg Med. 2025;85(2):132–143 (19,708 transfers with intracerebral haemorrhage, US Get With The Guidelines-Stroke registry, 2019–22; median and IQR from the full text, medRxiv 10.1101/2024.04.26.24306465)',
+    context: 'European figures exist only for thrombectomy transfers and are shorter: median 66 min (Rotterdam region, 133 patients; van de Wijdeven et al. Eur Stroke J 2023) and 92 min (Rhine-Main, 37 patients; Boss et al. Neurol Res Pract 2021). No German figure for brain bleeds was found.',
+  },
+  nationalMaxZoom: 8, // national colour view below this zoom
   // Neurosurgery sites left out of the simulator: groups A (not an emergency destination) and B (doubtful) of
   // report/manuscript/ns_site_check_2026-10-20.csv (author's decision, 20.10.2026). The registered analysis and
   // destinations.csv are unchanged.

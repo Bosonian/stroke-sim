@@ -69,12 +69,6 @@ button, input { font: inherit; }
 }
 .link:hover { color: var(--on-console); }
 
-.clock { display: grid; gap: 4px; }
-.clock-time { font-family: var(--font-display); font-size: 18px; color: var(--on-console-dim); }
-.clock-time .num { font-size: 40px; font-weight: 600; color: var(--on-console); font-variant-numeric: tabular-nums; }
-.clock-status { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 15px; color: var(--on-console-dim); }
-.clock-status span:empty { display: none; }
-
 /* The decision read-out: the one bold element */
 .decision {
   --tier: var(--tier-wait);
@@ -87,34 +81,59 @@ button, input { font: inherit; }
 .decision[data-tier="t81"] { --tier: var(--tier-81); }
 .decision[data-tier="t91"] { --tier: var(--tier-91); }
 .tier { margin: 0; font-size: 15px; color: var(--on-console-dim); }
-.actions { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.actions li {
-  font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.12;
-}
-.actions li + li { font-size: 21px; font-weight: 600; }
-.target { display: grid; gap: 2px; margin-top: 4px; }
-.target p { margin: 0; }
-.target-kind { font-size: 14px; color: var(--on-console-dim); display: flex; align-items: center; gap: 8px; }
-.target-kind::before {
-  content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--kind, var(--su));
-  box-shadow: 0 0 0 2px var(--console-2), 0 0 0 3px rgba(255, 255, 255, 0.5);
-}
-.target-name { font-family: var(--font-display); font-weight: 600; font-size: 24px; line-height: 1.15; }
-.target-meta { font-size: 17px; font-variant-numeric: tabular-nums; }
-.target-meta b { font-family: var(--font-display); font-size: 30px; font-weight: 700; }
-.target-su { font-size: 14px; color: var(--on-console-dim); }
-.likely { margin: 0; font-size: 15px; }
-.window { margin: 4px 0 0; font-size: 15px; color: var(--on-console-dim); }
-.window b { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: var(--on-console); margin-right: 4px; }
-.window:empty { display: none; }
-.likely:empty, .fp:empty, .notice:empty, .alt:empty, .combined:empty { display: none; }
-.scenario { margin: 0 0 2px; font-size: 13px; color: var(--on-console); background: rgba(255, 255, 255, 0.08); padding: 6px 10px; border-radius: var(--radius-s); }
-.combined { margin: 0; font-size: 13px; color: var(--on-console-dim); }
+.target-name { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 19px; line-height: 1.2; color: var(--on-console-dim); }
+.fp:empty, .notice:empty, .alt:empty { display: none; }
 .evidence { justify-self: start; }
 .fp { margin: 0; font-size: 14px; color: var(--on-console-dim); border-top: 1px solid var(--console-line); padding-top: 8px; }
 .alt { font-size: 14px; color: var(--on-console-dim); display: grid; gap: 2px; }
 .alt b { color: var(--on-console); font-weight: 700; }
 .notice { margin: 0; font-size: 15px; color: var(--on-console); background: rgba(255, 255, 255, 0.06); padding: 10px 12px; border-radius: var(--radius-s); }
+
+
+/* Map story: badge, result marker, national legend */
+.badge {
+  position: absolute; z-index: 2; top: 14px; left: 50%; transform: translateX(-50%);
+  width: min(560px, calc(100% - 340px)); padding: 12px 16px; border-radius: var(--radius-m);
+  background: #ffffff; color: var(--ink); box-shadow: 0 4px 16px rgba(19, 39, 63, 0.22);
+  display: grid; gap: 4px; border-left: 6px solid var(--ns);
+}
+.badge strong { font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.15; }
+.badge span { font-size: 14px; color: #3d4b5c; }
+.result-marker { display: flex; align-items: center; gap: 6px; pointer-events: none; }
+.result-marker .tube {
+  width: 34px; height: 34px; border-radius: 50%; background: #F0E442; border: 2px solid #18222F;
+  display: grid; place-items: center; box-shadow: 0 2px 6px rgba(19, 39, 63, 0.4);
+}
+.result-marker .tube svg { width: 22px; height: 22px; }
+.result-label {
+  font-family: var(--font-display); font-weight: 700; font-size: 16px; background: #F0E442; color: #18222F;
+  border: 2px solid #18222F; border-radius: 6px; padding: 1px 6px; white-space: nowrap;
+}
+.natlegend {
+  position: absolute; z-index: 2; left: 16px; bottom: 28px; max-width: 300px; padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.94); border-radius: var(--radius-m); font-size: 13px; color: var(--ink);
+  box-shadow: 0 2px 10px rgba(19, 39, 63, 0.18);
+}
+.natlegend-title { margin: 0 0 6px; font-weight: 700; }
+.natlegend ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.natlegend li { display: flex; align-items: center; gap: 6px; }
+.natlegend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; flex: none; }
+.natlegend-share { margin: 8px 0 0; font-weight: 700; }
+.natlegend-share:empty { display: none; }
+
+/* Panel: blood draw, verdict, details */
+.draws label { flex: 1 1 calc(50% - 6px); justify-content: center; }
+.verdict { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.15; }
+.saving { margin: 0; font-size: 17px; font-weight: 700; color: var(--on-console); }
+.timing { margin: 0; font-size: 15px; color: var(--on-console-dim); }
+.saving:empty, .timing:empty, .verdict:empty, .target-name:empty { display: none; }
+.more { display: grid; gap: 14px; }
+.more[open] { padding-bottom: 4px; }
+.more summary { cursor: pointer; font-weight: 700; min-height: 40px; display: flex; align-items: center; }
+.more > * + * { margin-top: 12px; }
+.legend i.bar { width: 22px; height: 0; border-radius: 0; border-top: 4px solid var(--c); background: none; }
+.legend i.bar.dash { border-top-style: dashed; }
+.legend i.tube-dot { background: #F0E442; border: 2px solid #18222F; }
 
 /* Controls */
 .controls { display: grid; gap: 14px; }
@@ -190,15 +209,15 @@ button, input { font: inherit; }
   .panel.open .panel-head, .panel.open .panel-foot { display: flex; }
   .panel.open .panel-foot { display: grid; }
   .decision { padding: 12px 14px; gap: 6px; }
-  .target-name { font-size: 20px; }
-  .window b { font-size: 24px; }
   .sheet-handle { display: flex; justify-content: center; background: none; border: 0; padding: 12px 0 10px; margin: -6px -16px 0; cursor: grab; touch-action: none; }
   .sheet-grip { width: 44px; height: 5px; border-radius: 3px; background: var(--console-line); }
   .panel-head h1 { font-size: 17px; }
-  .clock-time .num { font-size: 30px; }
-  .actions li { font-size: 22px; }
-  .target-meta b { font-size: 24px; }
   .watermark { left: 10px; top: 8px; }
+  .badge { top: 34px; width: calc(100% - 24px); padding: 8px 12px; }
+  .badge strong { font-size: 18px; }
+  .badge span { font-size: 13px; }
+  .natlegend { display: none; }
+  .verdict { font-size: 20px; }
   .watermark strong { font-size: 18px; }
   .watermark span { display: none; }
 }
