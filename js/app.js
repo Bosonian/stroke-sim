@@ -22,7 +22,6 @@ const FALLBACK_STYLE = {
 const KM_LAT = 1 / 111.2; // degrees latitude per km
 const NAT_BOX = { west: 5.5, east: 15.5, south: 47.0, north: 55.2 };
 const NAT_COORDS = [[NAT_BOX.west, NAT_BOX.north], [NAT_BOX.east, NAT_BOX.north], [NAT_BOX.east, NAT_BOX.south], [NAT_BOX.west, NAT_BOX.south]];
-const BLANK = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -155,9 +154,9 @@ function resultEl() {
 
 /** Paint the national view for the chosen blood draw and speed (skipped when nothing changed). */
 function renderNational() {
-  const src = ui.map && ui.map.getSource('national');
+  const map = ui.map;
   const key = `${state.s}|${state.k}`;
-  if (!src || !ui.grid || ui.natKey === key) return;
+  if (!map || !map.getLayer('links-via') || !ui.grid || ui.natKey === key) return;
   ui.natKey = key;
   const width = 640;
   const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
@@ -166,7 +165,18 @@ function renderNational() {
   const cv = document.createElement('canvas');
   cv.width = width; cv.height = height;
   cv.getContext('2d').putImageData(new ImageData(px, width, height), 0, 0);
-  src.updateImage({ url: cv.toDataURL(), coordinates: NAT_COORDS });
+  const url = cv.toDataURL();
+  const src = map.getSource('national');
+  if (src) {
+    src.updateImage({ url, coordinates: NAT_COORDS });
+    return;
+  }
+  // added with its real image: replacing a placeholder while it loads raises an AbortError
+  map.addSource('national', { type: 'image', url, coordinates: NAT_COORDS });
+  map.addLayer({
+    id: 'national', type: 'raster', source: 'national', maxzoom: config.nationalMaxZoom,
+    paint: { 'raster-opacity': 0.8, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
+  }, 'links-via');
 }
 
 function showNatLegend() {
@@ -176,12 +186,7 @@ function showNatLegend() {
 
 function addLayers(map) {
   if (map.getSource('hospitals')) return;
-  map.addSource('national', { type: 'image', url: BLANK, coordinates: NAT_COORDS });
-  map.addLayer({
-    id: 'national', type: 'raster', source: 'national', maxzoom: config.nationalMaxZoom,
-    paint: { 'raster-opacity': 0.8, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 },
-  });
-  ui.natKey = null;
+  ui.natKey = null; // the national image is added by renderNational once it is painted
   map.addSource('links', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addSource('hospitals', { type: 'geojson', data: hospitalFeatures(ui.hospitals, EX) });
   map.addLayer({
@@ -258,15 +263,17 @@ function initMap() {
   window.addEventListener('resize', onResize);
   $('panel').addEventListener('transitionend', () => { padMap(); map.easeTo({ center: [ui.pos.lon, ui.pos.lat], duration: 300 }); });
 
+  // plain background only if the base style itself never loads; later errors (a tile, an aborted image) are ignored
+  let styleReady = false;
   let fellBack = false;
   const fallback = () => {
-    if (fellBack) return;
+    if (fellBack || styleReady) return;
     fellBack = true;
-    map.setStyle(FALLBACK_STYLE);
+    map.setStyle(FALLBACK_STYLE, { diff: false });
   };
-  map.on('error', () => { if (!map.isStyleLoaded()) fallback(); });
-  setTimeout(() => { if (!map.isStyleLoaded()) fallback(); }, 8000);
-  map.on('style.load', () => { addLayers(map); update(); });
+  map.on('error', (e) => { if (!(e && e.error && e.error.name === 'AbortError')) fallback(); });
+  setTimeout(fallback, 8000);
+  map.on('style.load', () => { styleReady = true; addLayers(map); update(); });
   map.on('zoom', showNatLegend);
   map.on('click', 'hospitals', hospitalPopup);
   map.on('mouseenter', 'hospitals', () => { map.getCanvas().style.cursor = 'pointer'; });
