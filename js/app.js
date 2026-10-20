@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { strings } from './i18n.js';
 import { loadGrid } from './grid.js';
 import { hospitalFeatures, siteKind } from './hospitals.js';
-import { expectedResultAt, resultShown, atScene, likelyBeforeArrival, arrivalAt, imagingFrom, decisionWindow } from './sim.js';
+import { expectedResultAt, resultShown, atScene, likelyBeforeArrival, arrivalAt, imagingTimes, decisionWindow, updateLeg } from './sim.js';
 import { decide, range, fmtDetour } from './decide.js';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
@@ -17,7 +17,8 @@ const FALLBACK_STYLE = {
   layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#E9EDF1' } }],
 };
 const RATES = [1, 5, 20];
-const MAX_MIN = 120;
+const MAX_MIN = config.maxMin;
+const KM_LAT = 1 / 111.2; // degrees latitude per km
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -26,7 +27,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
-const initial = () => ({ t: 0, testStart: null, leaveAt: null, resultAt: null, result: 'pending', k: config.kDefault, A: config.A });
+const initial = () => ({ t: 0, testStart: null, leaveAt: null, resultAt: null, result: 'pending', k: config.kDefault, A: config.A, leg: null });
 const state = initial();
 const ui = {
   lang: store.get('sim-lang') === 'de' ? 'de' : 'en',
@@ -37,6 +38,8 @@ const ui = {
   hospitals: [],
   map: null,
   marker: null,
+  snap: null, // phone sheet: index into SNAPS once the user has moved it
+  moveTo: null, // set by initMap: (lon, lat, pan) => void
 };
 const L = () => strings[ui.lang];
 
@@ -55,8 +58,12 @@ function applyStatic() {
   $('legend').innerHTML = ['su', 'ns', 'both']
     .map((k) => `<li><i style="background:${KIND_COLOR[k]}"></i>${esc(s.legend[k])}</li>`).join('');
   $('estimateNote').textContent = `${s.estimateNote} ${s.connectorNote}`;
-  $('aboutBody').innerHTML = [...s.aboutBody, s.imagingNote, `${s.gapNote}`, config.model.source]
+  $('aboutBody').innerHTML = [...s.aboutBody, s.imagingNote(config.doorToImaging), s.transitNote,
+    s.combinedUnavailable, s.gapNote, config.model.source]
     .map((p) => `<p>${esc(p)}</p>`).join('');
+  $('placeSel').innerHTML = `<option value="">–</option>`
+    + config.places.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
+  if (ui.marker) ui.marker.getElement().setAttribute('aria-label', s.ambulanceLabel);
 }
 
 function buildSegment(id, name, values, label, current) {
@@ -77,7 +84,9 @@ function buildRates() {
 function ambulanceEl() {
   const el = document.createElement('div');
   el.className = 'ambulance';
-  el.setAttribute('aria-label', 'Ambulance');
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-label', L().ambulanceLabel);
   el.innerHTML = `<svg viewBox="0 0 46 46" aria-hidden="true">
     <rect x="14" y="4" width="18" height="38" rx="4" fill="#ffffff" stroke="#13273F" stroke-width="1.5"/>
     <rect x="14" y="22" width="18" height="5" fill="#F2342B"/>
@@ -147,14 +156,10 @@ function initMap() {
   ui.map = map;
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
   // phone: keep the ambulance visible above the bottom sheet
-  const pad = () => {
-    if (!window.matchMedia('(max-width: 899px)').matches) return map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
-    map.setPadding({ top: 0, left: 0, right: 0, bottom: $('panel').offsetHeight });
-  };
-  pad();
+  padMap();
   map.jumpTo({ center: [ui.pos.lon, ui.pos.lat] });
-  window.addEventListener('resize', pad);
-  $('panel').addEventListener('transitionend', () => { pad(); map.easeTo({ center: [ui.pos.lon, ui.pos.lat], duration: 300 }); });
+  window.addEventListener('resize', onResize);
+  $('panel').addEventListener('transitionend', () => { padMap(); map.easeTo({ center: [ui.pos.lon, ui.pos.lat], duration: 300 }); });
 
   let fellBack = false;
   const fallback = () => {
@@ -189,6 +194,21 @@ function initMap() {
   });
   ui.marker.on('drag', follow);
   ui.marker.on('dragend', follow);
+  ui.moveTo = (lon, lat, pan) => {
+    ui.marker.setLngLat([lon, lat]);
+    follow();
+    if (pan) map.easeTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 8), duration: 600 });
+  };
+  // keyboard: arrow keys move the ambulance 1 km (Shift: 10 km)
+  ui.marker.getElement().addEventListener('keydown', (e) => {
+    const step = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const km = e.shiftKey ? 10 : 1;
+    const dLat = step[1] * km * KM_LAT;
+    const dLon = (step[0] * km * KM_LAT) / Math.cos((ui.pos.lat * Math.PI) / 180);
+    ui.moveTo(ui.pos.lon + dLon, ui.pos.lat + dLat, true);
+  });
 }
 
 // ---------- the decision read-out ----------
@@ -244,6 +264,7 @@ function update() {
   $('imagingLine').textContent = '';
   $('fpLine').textContent = '';
   $('altBlock').innerHTML = '';
+  $('combinedLine').textContent = '';
   if (!ui.grid) {
     show(false);
     $('noticeLine').textContent = `${s.noData} ${s.dragHint}`;
@@ -270,25 +291,35 @@ function update() {
   $('targetSu').textContent = d.target === 'su' ? '' : kind === 'both' ? s.hasSu : s.noSu;
 
   const driveLeft = tgt.t * state.k;
-  const likely = likelyBeforeArrival(state, driveLeft);
-  if (likely != null && shown === 'pending') $('likelyLine').textContent = likely ? s.likelyYes : s.likelyNo;
+  // in transit: arrival is fixed by the current leg; a new position, target or speed starts a new leg now
+  state.leg = updateLeg(state, `${tgt.idx}|${state.k}|${ui.pos.lon.toFixed(4)},${ui.pos.lat.toFixed(4)}`, driveLeft);
   const arr = arrivalAt(state, driveLeft);
-  const img = imagingFrom(state, driveLeft, config.doorToImaging.p25);
-  $('imagingLine').textContent = `${s.arrivalLine(Math.round(arr))}. ${s.imagingLine(Math.round(img))}.`
-    + (exp != null && shown === 'pending' && exp <= img ? ` ${s.resultBeforeImaging}.` : '');
-  const win = decisionWindow(state, driveLeft, config.doorToImaging.p25);
-  if (shown !== 'pending' && state.t < img) {
-    $('windowLine').innerHTML = `<b>${Math.round(img - state.t)} min</b> ${esc(s.windowLeft)}`;
+  const arrived = !atScene(state) && state.t >= arr;
+  if (!atScene(state)) $('whereLine').textContent = arrived ? s.arrived : s.arriveIn(Math.ceil(arr - state.t));
+  const likely = likelyBeforeArrival(state, driveLeft);
+  if (likely != null && shown === 'pending' && !arrived) $('likelyLine').textContent = likely ? s.likelyYes : s.likelyNo;
+  const dti = config.doorToImaging;
+  const img = imagingTimes(state, driveLeft, dti);
+  const rnd = (x) => ({ fast: Math.round(x.fast), median: Math.round(x.median), slow: Math.round(x.slow) });
+  $('imagingLine').textContent = `${s.arrivalLine(Math.round(arr))}. ${s.imagingLine(rnd(img), dti)}.`;
+  const win = decisionWindow(state, driveLeft, dti.p25);
+  const winMed = decisionWindow(state, driveLeft, dti.median);
+  if (shown !== 'pending' && state.t < img.fast) {
+    $('windowLine').innerHTML = `<b>${Math.round(img.fast - state.t)} min</b> ${esc(s.windowLeft(dti, Math.round(img.median - state.t)))}`;
   } else if (win != null && shown === 'pending') {
-    $('windowLine').innerHTML = win >= 0 ? `<b>${Math.round(win)} min</b> ${esc(s.windowPending)}` : esc(s.windowAfter(Math.round(-win)));
+    $('windowLine').innerHTML = win >= 0
+      ? `<b>${Math.round(win)} min</b> ${esc(s.windowPending(dti, Math.round(winMed)))}`
+      : esc(s.windowAfter(Math.round(-win), dti));
   }
-  if (d.fpKey) $('fpLine').textContent = s[d.fpKey];
+  if (d.fpKey) $('fpLine').textContent = s[d.fpKey](config.model.ppv);
+  if (tier.positive && !config.combinedRoutes) $('combinedLine').textContent = s.combinedUnavailable;
 
   // alternatives: always show the other options, so the detour question stays visible
   const lines = [];
   const links = [link('target', h, kind)];
   for (const key of ['ns', 'both', 'su']) {
     const opt = d.options[key];
+    if (key === 'both' && !config.combinedRoutes) continue;
     if (key === d.target || !opt || opt.idx === tgt.idx) continue;
     if (key === 'su' && d.target === 'su') continue;
     if (lines.some((l) => l.idx === opt.idx)) continue;
@@ -353,11 +384,21 @@ function bind() {
     update();
   });
   $('aboutBtn').addEventListener('click', () => $('aboutDlg').showModal());
+  $('evidenceBtn').addEventListener('click', () => $('aboutDlg').showModal());
+  $('placeSel').addEventListener('change', (e) => {
+    const p = config.places[Number(e.target.value)];
+    if (p && ui.moveTo) ui.moveTo(p.lon, p.lat, true);
+  });
   bindSheet();
 }
 
 // Phone bottom sheet: drag the handle up or down; it snaps to small, half or full height. A tap toggles half/full.
 const SNAPS = [0.16, 0.38, 0.85];
+const isPhone = () => window.matchMedia('(max-width: 899px)').matches;
+function padMap() {
+  if (!ui.map) return;
+  ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: isPhone() ? $('panel').offsetHeight : 0 });
+}
 function setSheet(px, animate) {
   const panel = $('panel');
   panel.style.transition = animate ? '' : 'none';
@@ -365,7 +406,24 @@ function setSheet(px, animate) {
   const open = px > window.innerHeight * 0.5;
   panel.classList.toggle('open', open);
   $('sheetHandle').setAttribute('aria-expanded', String(open));
-  if (!animate && ui.map) ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: px });
+  // set padding now too: with reduced motion there is no transitionend event
+  if (ui.map) ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: Math.min(px, panel.scrollHeight) });
+}
+function snapTo(i) {
+  ui.snap = i;
+  setSheet(SNAPS[i] * window.innerHeight, true);
+}
+function onResize() {
+  const panel = $('panel');
+  if (!isPhone()) {
+    panel.style.maxHeight = '';
+    panel.style.transition = '';
+    panel.classList.remove('open');
+    ui.snap = null;
+  } else if (ui.snap != null) {
+    setSheet(SNAPS[ui.snap] * window.innerHeight, false);
+  }
+  padMap();
 }
 function bindSheet() {
   const h = $('sheetHandle');
@@ -380,26 +438,38 @@ function bindSheet() {
     if (Math.abs(dy) > 4) moved = true;
     if (moved) setSheet(Math.min(window.innerHeight * 0.9, Math.max(60, startH + dy)), false);
   });
+  const toggle = () => snapTo($('panel').offsetHeight > window.innerHeight * 0.5 ? 1 : 2);
   const end = () => {
     if (startY == null) return;
     startY = null;
     const vh = window.innerHeight, cur = $('panel').offsetHeight;
-    const target = moved
-      ? SNAPS.map((s) => s * vh).reduce((a, b) => (Math.abs(b - cur) < Math.abs(a - cur) ? b : a))
-      : (cur > vh * 0.5 ? SNAPS[1] : SNAPS[2]) * vh;
-    setSheet(target, true);
+    if (!moved) return toggle();
+    const dist = SNAPS.map((s) => Math.abs(s * vh - cur));
+    snapTo(dist.indexOf(Math.min(...dist)));
   };
   h.addEventListener('pointerup', end);
   h.addEventListener('pointercancel', end);
+  // keyboard (Enter/Space) produces a click with detail 0; pointer taps are handled above
+  h.addEventListener('click', (e) => { if (e.detail === 0) toggle(); });
 }
 
 async function main() {
   applyStatic();
   buildRates();
   bind();
-  ui.hospitals = await (await fetch('data/hospitals.json')).json();
-  ui.grid = await loadGrid('data');
-  initMap();
+  try {
+    if (typeof maplibregl === 'undefined') throw new Error('map library not loaded');
+    const r = await fetch('data/hospitals.json');
+    if (!r.ok) throw new Error(`hospitals: HTTP ${r.status}`);
+    ui.hospitals = await r.json();
+    ui.grid = await loadGrid('data');
+    initMap();
+  } catch (err) {
+    console.error(err);
+    $('targetBlock').hidden = true;
+    $('noticeLine').textContent = L().loadError;
+    return;
+  }
   update();
   requestAnimationFrame(tick);
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

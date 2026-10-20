@@ -13,13 +13,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <main class="app">
     <div id="map" class="map" role="application" aria-label="Map of Germany with hospitals and the ambulance"></div>
 
-    <div class="watermark" aria-hidden="true">
+    <div class="watermark" role="note">
       <strong data-t="watermark1">Simulation</strong>
       <span data-t="watermark2">Teaching and research only. Not for clinical use.</span>
     </div>
@@ -45,6 +45,7 @@
       </section>
 
       <section class="decision" id="decision" aria-live="polite">
+        <p class="scenario" id="scenarioLine" data-t="scenarioLabel">Teaching simulation: assumed scenario policy, not a clinical recommendation.</p>
         <p class="tier" id="tierLine"></p>
         <ul class="actions" id="actionList"></ul>
         <div class="target" id="targetBlock">
@@ -58,10 +59,16 @@
         <p class="likely" id="imagingLine"></p>
         <p class="fp" id="fpLine"></p>
         <div class="alt" id="altBlock"></div>
+        <p class="combined" id="combinedLine"></p>
         <p class="notice" id="noticeLine"></p>
+        <button class="link evidence" id="evidenceBtn" data-t="evidenceLink">Evidence and limits</button>
       </section>
 
       <section class="controls">
+        <label class="inline place"><span data-t="jumpTo">Jump to a place</span>
+          <select id="placeSel"></select>
+        </label>
+
         <div class="row buttons">
           <button id="startBtn" class="btn primary" data-t="startTest">Test started</button>
           <button id="leaveBtn" class="btn" data-t="leave">Leaving scene</button>
@@ -74,7 +81,7 @@
 
         <div class="row">
           <label class="inline"><span data-t="resultAtLabel">Result at minute</span>
-            <input id="resultAt" type="number" min="0" max="180" step="1" inputmode="numeric">
+            <input id="resultAt" type="number" min="0" max="120" step="1" inputmode="numeric">
           </label>
         </div>
 
@@ -104,6 +111,6 @@
   </main>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script type="module" src="js/app.js?v=4"></script>
+  <script type="module" src="js/app.js?v=5"></script>
 </body>
 </html>

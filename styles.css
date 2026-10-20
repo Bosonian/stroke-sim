@@ -107,7 +107,10 @@ button, input { font: inherit; }
 .window { margin: 4px 0 0; font-size: 15px; color: var(--on-console-dim); }
 .window b { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: var(--on-console); margin-right: 4px; }
 .window:empty { display: none; }
-.likely:empty, .fp:empty, .notice:empty, .alt:empty { display: none; }
+.likely:empty, .fp:empty, .notice:empty, .alt:empty, .combined:empty { display: none; }
+.scenario { margin: 0 0 2px; font-size: 13px; color: var(--on-console); background: rgba(255, 255, 255, 0.08); padding: 6px 10px; border-radius: var(--radius-s); }
+.combined { margin: 0; font-size: 13px; color: var(--on-console-dim); }
+.evidence { justify-self: start; }
 .fp { margin: 0; font-size: 14px; color: var(--on-console-dim); border-top: 1px solid var(--console-line); padding-top: 8px; }
 .alt { font-size: 14px; color: var(--on-console-dim); display: grid; gap: 2px; }
 .alt b { color: var(--on-console); font-weight: 700; }
@@ -137,6 +140,8 @@ button, input { font: inherit; }
 .segmented label:has(input:checked) { background: var(--on-console); color: var(--console); border-color: var(--on-console); }
 .segmented label:has(input:focus-visible) { outline: 3px solid var(--tier-71); outline-offset: 2px; }
 .inline { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--on-console-dim); }
+.inline select { min-height: 40px; padding: 6px 8px; border-radius: var(--radius-s); border: 1px solid var(--console-line); background: var(--console-2); color: var(--on-console); max-width: 100%; }
+.inline.place { flex-wrap: wrap; }
 .inline input {
   width: 5.5em; min-height: 40px; padding: 6px 8px; border-radius: var(--radius-s);
   border: 1px solid var(--console-line); background: var(--console-2); color: var(--on-console);
@@ -157,6 +162,7 @@ button, input { font: inherit; }
 /* Ambulance marker: top view, white with luminous red stripe (German RTW livery) */
 .ambulance { width: 46px; height: 46px; cursor: grab; touch-action: none; filter: drop-shadow(0 3px 4px rgba(19, 39, 63, 0.45)); }
 .ambulance:active { cursor: grabbing; }
+.ambulance:focus-visible { outline: 3px solid var(--tier-71); outline-offset: 2px; border-radius: 8px; }
 .ambulance svg { width: 100%; height: 100%; display: block; }
 
 /* Popups and dialog */

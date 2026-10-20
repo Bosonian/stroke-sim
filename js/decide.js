@@ -6,7 +6,8 @@ export function decide(look, shown, cfg) {
   const tier = cfg.tiers[shown];
   let target = 'su';
   if (tier.positive) {
-    target = look.both && look.both.t - look.ns.t <= cfg.bothMaxExtraMin ? 'both' : 'ns';
+    // the combined-centre comparison needs its own routes; without them it is not made (see config.combinedRoutes)
+    target = cfg.combinedRoutes && look.both && look.both.t - look.ns.t <= cfg.bothMaxExtraMin ? 'both' : 'ns';
   }
   return {
     tier,
