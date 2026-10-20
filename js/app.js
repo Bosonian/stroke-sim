@@ -86,7 +86,7 @@ function applyStatic() {
     .map((k) => `<li><i style="background:${KIND_COLOR[k]}"></i>${esc(s.legend[k])}</li>`).join('');
   $('estimateNote').textContent = `${s.estimateNote} ${s.connectorNote}`;
   $('aboutBody').innerHTML = [...s.aboutBody, s.routingAbout, s.imagingNote(config.doorToImaging), s.transitNote,
-    s.combinedUnavailable, s.gapNote, `${s.excludedLabel} ${Object.values(EX).join('; ')}.`, config.model.source]
+    s.combinedUnavailable, s.gapNote, `${s.excludedLabel} ${Object.values(EX).map((v) => v.split(':')[0]).join('; ')}.`, config.model.source]
     .map((p) => `<p>${esc(p)}</p>`).join('');
   $('placeSel').innerHTML = `<option value="">–</option>`
     + config.places.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
