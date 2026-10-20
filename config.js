@@ -27,10 +27,18 @@ export const config = {
     p25: 21, median: 32, p75: 50,
     source: 'Weiss D, et al. BMC Emerg Med. 2024;24:224 (Table 1)',
   },
+  // Sites in the registered neurosurgery list (Krankenhausverzeichnis 2024) left out of the simulator.
+  // The registered analysis and destinations.csv are unchanged (LOG.md, 20.10.2026).
+  excludedSites: {
+    NS113: 'NC Klinik am Forum, Ludwigsburg: outpatient practice, no surgery (study author, 20.10.2026)',
+    NS082: 'Wirbelsäulenzentrum Rhein-Main GbR, Offenbach: spine-surgery partnership, flagged by name, to be verified',
+  },
+  // Live road routes (tool data, not study results). Only simulated ambulance coordinates are sent.
+  routing: { url: 'https://router.project-osrm.org', candidates: 8, timeoutMs: 5000, debounceMs: 350 },
   start: { lon: 9.1918, lat: 48.8975 }, // Ludwigsburg area, first view
   // jump-to list (keyboard-accessible placement); all checked to have drive-time data on 20.10.2026
   places: [
-    { name: 'Stuttgart-Zuffenhausen', lon: 9.1918, lat: 48.8975 },
+    { name: 'Ludwigsburg', lon: 9.1918, lat: 48.8975 },
     { name: 'Berlin-Mitte', lon: 13.40, lat: 52.52 },
     { name: 'Hamburg', lon: 9.99, lat: 53.55 },
     { name: 'München', lon: 11.575, lat: 48.137 },

@@ -5,8 +5,9 @@ import { config } from '../config.js';
 import { strings } from './i18n.js';
 import { loadGrid } from './grid.js';
 import { hospitalFeatures, siteKind } from './hospitals.js';
-import { expectedResultAt, resultShown, atScene, likelyBeforeArrival, arrivalAt, imagingTimes, decisionWindow, updateLeg } from './sim.js';
+import { expectedResultAt, resultShown, atScene, likelyBeforeArrival, arrivalAt, imagingTimes, decisionWindow, updateLeg, clampResultAt } from './sim.js';
 import { decide, range, fmtDetour } from './decide.js';
+import { fetchLive, routeLabel } from './route.js';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const BASE_STYLE = 'https://tiles.openfreemap.org/styles/positron';
@@ -40,7 +41,33 @@ const ui = {
   marker: null,
   snap: null, // phone sheet: index into SNAPS once the user has moved it
   moveTo: null, // set by initMap: (lon, lat, pan) => void
+  live: null, // { key, data } road routes for the position `key`
 };
+const EX = config.excludedSites;
+const posKey = () => `${ui.pos.lon.toFixed(4)},${ui.pos.lat.toFixed(4)}`;
+const liveCache = new Map();
+let liveTimer = null;
+
+/** Ask for road routes once the ambulance has stopped moving; the grid answers meanwhile. */
+function scheduleLive() {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(async () => {
+    const key = posKey();
+    let data = liveCache.get(key);
+    if (data === undefined) {
+      const { lon, lat } = ui.pos;
+      data = await fetchLive(lon, lat, ui.hospitals, ui.grid ? ui.grid.lookup(lon, lat) : null, config);
+      if (data) {
+        if (liveCache.size > 300) liveCache.clear();
+        liveCache.set(key, data);
+      }
+    }
+    if (key !== posKey()) return; // moved on meanwhile
+    ui.live = data ? { key, data } : null;
+    update();
+  }, config.routing.debounceMs);
+}
+
 const L = () => strings[ui.lang];
 
 // ---------- static text and controls ----------
@@ -58,8 +85,8 @@ function applyStatic() {
   $('legend').innerHTML = ['su', 'ns', 'both']
     .map((k) => `<li><i style="background:${KIND_COLOR[k]}"></i>${esc(s.legend[k])}</li>`).join('');
   $('estimateNote').textContent = `${s.estimateNote} ${s.connectorNote}`;
-  $('aboutBody').innerHTML = [...s.aboutBody, s.imagingNote(config.doorToImaging), s.transitNote,
-    s.combinedUnavailable, s.gapNote, config.model.source]
+  $('aboutBody').innerHTML = [...s.aboutBody, s.routingAbout, s.imagingNote(config.doorToImaging), s.transitNote,
+    s.combinedUnavailable, s.gapNote, `${s.excludedLabel} ${Object.values(EX).join('; ')}.`, config.model.source]
     .map((p) => `<p>${esc(p)}</p>`).join('');
   $('placeSel').innerHTML = `<option value="">–</option>`
     + config.places.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
@@ -100,7 +127,7 @@ function ambulanceEl() {
 function addLayers(map) {
   if (map.getSource('hospitals')) return;
   map.addSource('links', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-  map.addSource('hospitals', { type: 'geojson', data: hospitalFeatures(ui.hospitals) });
+  map.addSource('hospitals', { type: 'geojson', data: hospitalFeatures(ui.hospitals, EX) });
   map.addLayer({
     id: 'links-alt', type: 'line', source: 'links', filter: ['==', ['get', 'role'], 'alt'],
     paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.55, 'line-dasharray': [2, 2] },
@@ -109,6 +136,14 @@ function addLayers(map) {
     id: 'links-target', type: 'line', source: 'links', filter: ['==', ['get', 'role'], 'target'],
     layout: { 'line-cap': 'round' },
     paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.9 },
+  });
+  map.addLayer({
+    id: 'links-label', type: 'symbol', source: 'links', filter: ['!=', ['get', 'label'], ''],
+    layout: {
+      'symbol-placement': 'line-center', 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'],
+      'text-size': ['case', ['==', ['get', 'role'], 'target'], 14, 12], 'text-allow-overlap': true,
+    },
+    paint: { 'text-color': '#18222F', 'text-halo-color': '#ffffff', 'text-halo-width': 2.4 },
   });
   map.addLayer({
     id: 'hospitals', type: 'circle', source: 'hospitals',
@@ -185,6 +220,7 @@ function initMap() {
       pending = true;
       requestAnimationFrame(() => { pending = false; update(); });
     }
+    scheduleLive();
   };
   // tap or click anywhere on the map moves the ambulance there (taps on a hospital open its details instead)
   map.on('click', (e) => {
@@ -217,28 +253,37 @@ function setLinks(features) {
   if (src) src.setData({ type: 'FeatureCollection', features });
 }
 
-function link(role, h, kind) {
+// road route with a "7 min · 4.2 km" label when live; otherwise a straight, unlabelled direction line
+function link(role, h, kind, opt) {
+  const road = opt && opt.geom;
   return {
     type: 'Feature',
-    properties: { role, color: KIND_COLOR[kind] },
-    geometry: { type: 'LineString', coordinates: [[ui.pos.lon, ui.pos.lat], [h.lon, h.lat]] },
+    properties: { role, color: KIND_COLOR[kind], label: road ? routeLabel(opt.sec, opt.m, state.k) : '' },
+    geometry: { type: 'LineString', coordinates: road ? [[ui.pos.lon, ui.pos.lat], ...opt.geom] : [[ui.pos.lon, ui.pos.lat], [h.lon, h.lat]] },
   };
 }
+
+const kmText = (opt) => (opt.km != null && opt.geom ? `, ${opt.km < 10 ? opt.km.toFixed(1) : Math.round(opt.km)} km` : '');
 
 function optionLine(key, opt, d) {
   const s = L();
   const h = ui.hospitals[opt.idx];
   const r = range(opt.t, config.kValues, state.k);
   const detour = fmtDetour((opt.t - d.options.su.t) * state.k, ui.lang);
-  return `<span>${esc(s.target[key])}: <b>${esc(h.name)}</b>, ${r.mid} min (${r.lo}–${r.hi}), ${esc(detour)}</span>`;
+  return `<span>${esc(s.target[key])}: <b>${esc(h.name)}</b>, ${r.mid} min (${r.lo}–${r.hi})${kmText(opt)}, ${esc(detour)}</span>`;
 }
 
 function update() {
   const s = L();
   const shown = resultShown(state);
   const exp = expectedResultAt(state);
-  const look = ui.grid ? ui.grid.lookup(ui.pos.lon, ui.pos.lat) : null;
+  // live road routes for this exact position if we have them; otherwise the 1 km grid
+  const live = ui.live && ui.live.key === posKey() ? ui.live.data : null;
+  let look = live || (ui.grid ? ui.grid.lookup(ui.pos.lon, ui.pos.lat) : null);
+  const excludedHere = !live && look && EX[ui.hospitals[look.ns.idx].id];
+  if (excludedHere) look = null;
   const d = decide(look, shown, config);
+  $('estimateNote').textContent = live ? s.routeNoteLive : `${s.estimateNote} ${s.connectorNote}`;
 
   // clock
   $('clockMin').textContent = state.t.toFixed(1);
@@ -265,15 +310,9 @@ function update() {
   $('fpLine').textContent = '';
   $('altBlock').innerHTML = '';
   $('combinedLine').textContent = '';
-  if (!ui.grid) {
-    show(false);
-    $('noticeLine').textContent = `${s.noData} ${s.dragHint}`;
-    setLinks([]);
-    return;
-  }
   if (!d) {
     show(false);
-    $('noticeLine').textContent = s.noRoad;
+    $('noticeLine').textContent = excludedHere ? s.liveNeeded : !ui.grid ? `${s.noData} ${s.dragHint}` : s.noRoad;
     setLinks([]);
     return;
   }
@@ -281,18 +320,18 @@ function update() {
   $('noticeLine').textContent = '';
   const tgt = d.options[d.target];
   const h = ui.hospitals[tgt.idx];
-  const kind = siteKind(ui.hospitals, tgt.idx);
+  const kind = siteKind(ui.hospitals, tgt.idx, EX);
   const r = range(tgt.t, config.kValues, state.k);
   $('targetKind').textContent = s.target[d.target];
   $('targetKind').style.setProperty('--kind', KIND_COLOR[kind]);
   $('targetName').textContent = `${h.name}, ${h.city}`;
-  $('targetMeta').innerHTML = `${esc(s.drive)} <b>${r.mid} min</b> (${r.lo}–${r.hi})`
+  $('targetMeta').innerHTML = `${esc(s.drive)} <b>${r.mid} min</b> (${r.lo}–${r.hi})${kmText(tgt)}`
     + (d.target === 'su' ? '' : `<br>${esc(fmtDetour(d.detourMin * state.k, ui.lang))} ${esc(s.detourVsSu)}`);
   $('targetSu').textContent = d.target === 'su' ? '' : kind === 'both' ? s.hasSu : s.noSu;
 
   const driveLeft = tgt.t * state.k;
   // in transit: arrival is fixed by the current leg; a new position, target or speed starts a new leg now
-  state.leg = updateLeg(state, `${tgt.idx}|${state.k}|${ui.pos.lon.toFixed(4)},${ui.pos.lat.toFixed(4)}`, driveLeft);
+  state.leg = updateLeg(state, `${tgt.idx}|${state.k}|${posKey()}|${live ? 'live' : 'grid'}`, driveLeft);
   const arr = arrivalAt(state, driveLeft);
   const arrived = !atScene(state) && state.t >= arr;
   if (!atScene(state)) $('whereLine').textContent = arrived ? s.arrived : s.arriveIn(Math.ceil(arr - state.t));
@@ -316,7 +355,7 @@ function update() {
 
   // alternatives: always show the other options, so the detour question stays visible
   const lines = [];
-  const links = [link('target', h, kind)];
+  const links = [link('target', h, kind, tgt)];
   for (const key of ['ns', 'both', 'su']) {
     const opt = d.options[key];
     if (key === 'both' && !config.combinedRoutes) continue;
@@ -324,7 +363,7 @@ function update() {
     if (key === 'su' && d.target === 'su') continue;
     if (lines.some((l) => l.idx === opt.idx)) continue;
     lines.push({ idx: opt.idx, html: optionLine(key, opt, d) });
-    links.push(link('alt', ui.hospitals[opt.idx], siteKind(ui.hospitals, opt.idx)));
+    links.push(link('alt', ui.hospitals[opt.idx], siteKind(ui.hospitals, opt.idx, EX), opt));
   }
   $('altBlock').innerHTML = lines.map((l) => l.html).join('');
   setLinks(links);
@@ -372,7 +411,7 @@ function bind() {
   $('scrub').addEventListener('input', (e) => { state.t = Number(e.target.value); update(); });
   $('resultAt').addEventListener('change', (e) => {
     const v = e.target.value === '' ? null : Number(e.target.value);
-    state.resultAt = v != null && state.testStart != null ? Math.max(v, state.testStart) : null;
+    state.resultAt = clampResultAt(v, state.testStart, MAX_MIN);
     update();
   });
   $('resultSeg').addEventListener('change', (e) => { state.result = e.target.value; update(); });
@@ -410,6 +449,7 @@ function setSheet(px, animate) {
   if (ui.map) ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: Math.min(px, panel.scrollHeight) });
 }
 function snapTo(i) {
+  if (!isPhone()) return; // the handle exists only in the phone layout
   ui.snap = i;
   setSheet(SNAPS[i] * window.innerHeight, true);
 }
@@ -471,6 +511,7 @@ async function main() {
     return;
   }
   update();
+  scheduleLive();
   requestAnimationFrame(tick);
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* app works without offline cache */ });

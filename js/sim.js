@@ -73,3 +73,9 @@ export function decisionWindow(s, driveLeftMin, doorToImagingMin) {
   if (at == null) return null;
   return imagingFrom(s, driveLeftMin, doorToImagingMin) - at;
 }
+
+/** The presenter's result time, kept between test start and the end of the timeline; null = default (start + A). */
+export function clampResultAt(v, testStart, maxMin) {
+  if (v == null || Number.isNaN(v) || testStart == null) return null;
+  return Math.min(maxMin, Math.max(v, testStart));
+}
