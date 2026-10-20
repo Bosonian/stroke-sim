@@ -1,0 +1,18 @@
+{
+ "e0": 4031000,
+ "n0": 2689000,
+ "ncols": 641,
+ "nrows": 859,
+ "cell": 1000,
+ "values_per_cell": 6,
+ "time_unit": "0.1 min at k = 1",
+ "no_data": 65535,
+ "crs": "EPSG:3035",
+ "built": "2026-10-20",
+ "routes_source": "routes_k1.csv",
+ "routes_sha256": "de9d4eeee74d38c0343efa9eab09d0e27378251f6b6aac4eab342cd064790733",
+ "destinations_sha256": "88bb120df16c191daf46307d76437e564dd022e9cd218b0f133b6b311b4d1e30",
+ "grid_sha256": "3dd9dc0248ad7ee7ac502dcdb36922389fbb6384e8fecdf7698ea6f650d35ff7",
+ "hospitals_sha256": "44727c84e2dc5e4c5157e6d823310edad825feb6834aa55886564b394247b45b",
+ "squares": 210556
+}
