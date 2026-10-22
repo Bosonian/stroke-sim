@@ -220,7 +220,14 @@ button, input { font: inherit; }
   box-shadow: 0 4px 16px rgba(19, 39, 63, 0.3); display: grid; justify-items: center; gap: 2px; min-width: 220px;
 }
 .race-clock strong { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1.05; font-variant-numeric: tabular-nums; }
-.race-clock span { font-size: 13px; color: var(--on-console-dim); }
+.race-clock > span { font-size: 13px; color: var(--on-console-dim); }
+/* live heading: what each dot is doing now */
+.race-phase { list-style: none; margin: 6px 0 2px; padding: 7px 0 0; border-top: 1px solid var(--console-line); display: grid; gap: 4px; justify-self: stretch; }
+.race-phase li { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; white-space: nowrap; }
+.race-phase i { width: 11px; height: 11px; border-radius: 50%; flex: none; border: 1.5px solid #ffffff; }
+.race-phase .with i { background: #D7263D; }
+.race-phase .without i { background: #5B6B7C; }
+.race-phase .without { color: var(--on-console-dim); }
 .race-dot { border-radius: 50%; pointer-events: none; }
 .race-dot.grey { width: 26px; height: 26px; background: #5B6B7C; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(19, 39, 63, 0.45); }
 .race-dot.red { position: relative; width: 16px; height: 16px; background: #D7263D; border: 2px solid #ffffff; box-shadow: 0 0 0 0 rgba(215, 38, 61, 0.6); animation: race-pulse 1.2s ease-out infinite; }
@@ -353,6 +360,8 @@ button, input { font: inherit; }
   .sum-table { font-size: 13px; }
   .sum-table td small { display: block; margin-left: 0; white-space: normal; }
   .race-clock strong { font-size: 26px; }
+  .race-phase li { font-size: 13px; white-space: normal; }
+  .race-clock { max-width: calc(100vw - 24px); }
   .badge strong { font-size: 18px; }
   .badge span { font-size: 13px; }
   .natlegend { display: none; }

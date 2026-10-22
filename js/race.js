@@ -48,6 +48,28 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   return { start: -s, end: Math.max(...all), with: wi, without: wo, diff: { ns: diff('ns'), bp: diff('bp') } };
 }
 
+/** What a dot is doing at minute `min`, for the live heading: 'scene' | 'testScene' | 'testDriving' | 'resultDriving' |
+ *  'toSu' | 'toNs' | 'doorToImage' | 'waitTransfer' | 'transfer' | 'imaged' | 'imagedNs'. */
+export function phaseAt(lane, min) {
+  const at = (key) => lane.events.find((e) => e.key === key)?.min;
+  const result = at('result');
+  const leg = lane.legs.find((l) => min >= l.from && min < l.to);
+  if (leg) {
+    if (leg.route === 'branch') return 'toNs';
+    if (leg.route === 'transfer') return 'transfer';
+    if (result == null) return 'toSu';
+    return min < result ? 'testDriving' : 'resultDriving';
+  }
+  if (min < 0) return result != null ? 'testScene' : 'scene';
+  // at a hospital
+  const scan = at('scan');
+  const leaves = at('transferLeaves');
+  const ns = at('ns');
+  if (scan != null && min < scan) return 'doorToImage';
+  if (leaves != null && min < leaves) return 'waitTransfer';
+  return ns != null && min >= ns ? 'imagedNs' : 'imaged';
+}
+
 /** Where a dot is at minute `min`: along its current leg, standing still between and after legs.
  *  routes[name] = { coords, segDur (s per segment at k = 1, or null), sec (route duration at k = 1) }. */
 export function positionAt(legs, min, k, routes) {
@@ -205,7 +227,7 @@ export function doorChip(min, { arrive, scan, leaves }, L) {
   const m = Math.max(0, Math.floor(min - arrive));
   if (min < scan) return L.doorToImage(m, Math.round(scan - arrive));
   if (leaves == null) return L.scanDone;
-  return min < leaves ? `${L.scanDone} · ${L.stopwatch(m)}` : L.transferLeaves;
+  return min < leaves ? `${L.organising} · ${L.stopwatch(m)}` : L.transferLeaves; // scan done, transfer being organised
 }
 
 /** "N min sooner" / "N min later" / "same time" (whole minutes). */

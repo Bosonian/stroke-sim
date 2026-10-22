@@ -9,7 +9,7 @@ import { range } from './decide.js?v=16';
 import { fetchLive, fetchRoute, routeLabel } from './route.js?v=16';
 import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=16';
 import { matchPresets, searchPlaces } from './search.js?v=16';
-import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=16';
+import { phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=16';
 import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=16';
 import { ROAD_COLORS, styleRoads } from './roads.js?v=16';
 import { START_TIERS, canStart, startDecision } from './start.js?v=16';
@@ -755,6 +755,11 @@ function drawRace(min) {
   r.grey.setLngLat(at('without', min));
   const ring = r.red.getElement().querySelector('.ring circle');
   if (ring) ring.setAttribute('stroke-dashoffset', String(100 * (1 - Math.max(0, Math.min(1, (min + draw) / A)))));
+  // live heading under the clock
+  for (const [lane, id] of [['with', 'phaseWith'], ['without', 'phaseWithout']]) {
+    const text = s.phase[phaseAt(sched[lane], min)];
+    if ($(id).textContent !== text) $(id).textContent = text;
+  }
   for (const lane of ['with', 'without']) {
     for (const e of sched[lane].events) {
       const id = `${lane}:${e.key}`;
