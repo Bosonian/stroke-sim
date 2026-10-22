@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
   <main class="app">
@@ -28,6 +28,13 @@
       <strong id="badgeMain"></strong>
       <span id="badgeSub"></span>
     </div>
+
+    <div class="race-clock" id="raceClock" role="timer" aria-live="off" hidden>
+      <strong id="clockMain"></strong>
+      <span id="clockSpeed"></span>
+    </div>
+
+    <div class="race-lanes" id="raceLanes" aria-live="polite" hidden></div>
 
     <div class="natlegend" id="natLegend" hidden>
       <p class="natlegend-title" id="natTitle"></p>
@@ -49,6 +56,8 @@
       <fieldset class="segmented draws" id="drawSeg">
         <legend data-t="drawLabel">Blood drawn</legend>
       </fieldset>
+
+      <button class="btn primary play" id="playBtn" type="button" data-t="play">Play the race</button>
 
       <section class="decision" id="decision" aria-live="polite">
         <p class="tier" id="tierLine"></p>
@@ -92,6 +101,6 @@
   </main>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script type="module" src="js/app.js?v=9"></script>
+  <script type="module" src="js/app.js?v=11"></script>
 </body>
 </html>

@@ -29,14 +29,16 @@ export const config = {
   doorToImaging: {
     // arrival to start of CT/MRI, 1,628 EMS patients with suspected stroke, 3 Düsseldorf stroke centres, 2021-22
     p25: 21, median: 32, p75: 50,
+    use: 'p25', // lower quartile: the race does not overstate what the test gains (author, 21.10.2026)
     source: 'Weiss D, et al. BMC Emerg Med. 2024;24:224 (Table 1)',
   },
   // Stay at the stroke unit before transfer (door-in-door-out: arrival to departure at the first hospital).
-  // Best available bleed-specific study (evidence review in docs/superpowers/specs/2026-10-20-blood-draw-map-design.md).
+  // German figure (author, 21.10.2026), lower quartile used (docs/superpowers/specs/2026-10-21-race-design.md).
   stay: {
-    median: 155, p25: 101, p75: 243,
-    source: 'Royan R, et al. Ann Emerg Med. 2025;85(2):132–143 (19,708 transfers with intracerebral haemorrhage, US Get With The Guidelines-Stroke registry, 2019–22; median and IQR from the full text, medRxiv 10.1101/2024.04.26.24306465)',
-    context: 'European figures exist only for thrombectomy transfers and are shorter: median 66 min (Rotterdam region, 133 patients; van de Wijdeven et al. Eur Stroke J 2023) and 92 min (Rhine-Main, 37 patients; Boss et al. Neurol Res Pract 2021). No German figure for brain bleeds was found.',
+    median: 92, p25: 69, p75: 110,
+    use: 'p25',
+    source: 'Boss EG, et al. Neurol Res Pract. 2021;3:38, doi:10.1186/s42466-021-00136-x (door-in-door-out, 37 consecutive patients transferred for thrombectomy, INVN Rhine-Main stroke network, 3 months)',
+    context: 'German figure from thrombectomy transfers; no German figure for brain bleeds was found. For comparison: median 155 min (IQR 101–243) in 19,708 US transfers with intracerebral haemorrhage (Royan R, et al. Ann Emerg Med. 2025;85(2):132–143) and 66 min in 133 thrombectomy transfers in the Rotterdam region (van de Wijdeven et al. Eur Stroke J 2023).',
   },
   nationalMaxZoom: 8, // national colour view below this zoom
   // Neurosurgery sites left out of the simulator: groups A (not an emergency destination) and B (doubtful) of
@@ -91,3 +93,8 @@ export const config = {
     { name: 'Prenzlau (Uckermark)', lon: 13.862, lat: 53.316 },
   ],
 };
+
+/** Minutes a wait is counted with: the quartile or median named in its `use` field. */
+export function waitMin(w) {
+  return w[w.use];
+}

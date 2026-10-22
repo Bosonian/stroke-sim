@@ -54,20 +54,23 @@ async function getJson(fetchFn, url, timeoutMs) {
   }
 }
 
-/** One road route (k = 1) with per-segment durations, or null. a, b: [lon, lat]. */
-async function getRoute(fetchFn, url, a, b, timeoutMs) {
+/** One road route (k = 1) with per-segment durations, or null. a, b: [lon, lat].
+ *  heading (degrees): leave a in that direction, snapped to a road within 25 m, so a re-route keeps driving forward
+ *  on the same road until a real junction; the destination is unconstrained. */
+async function getRoute(fetchFn, url, a, b, timeoutMs, heading = null) {
   const pt = (c) => `${c[0].toFixed(6)},${c[1].toFixed(6)}`;
-  const j = await getJson(fetchFn, `${url}/route/v1/driving/${pt(a)};${pt(b)}?overview=full&geometries=geojson&annotations=duration`, timeoutMs);
+  const dir = typeof heading === 'number' ? `&bearings=${Math.round(heading) % 360},30;&radiuses=25;unlimited` : '';
+  const j = await getJson(fetchFn, `${url}/route/v1/driving/${pt(a)};${pt(b)}?overview=full&geometries=geojson&annotations=duration${dir}`, timeoutMs);
   if (!j) return null;
   const r = j.routes[0];
   const seg = r.legs && r.legs[0] && r.legs[0].annotation ? r.legs[0].annotation.duration : null;
   return { sec: r.duration, m: r.distance, geom: r.geometry.coordinates, segDur: seg };
 }
 
-/** Road route between two points (e.g. result point -> neurosurgery), or null on any failure. */
-export async function fetchRoute(a, b, cfg, fetchFn = fetch) {
+/** Road route between two points (e.g. result point -> neurosurgery, in the ambulance's heading), or null. */
+export async function fetchRoute(a, b, cfg, fetchFn = fetch, heading = null) {
   try {
-    return await getRoute(fetchFn, cfg.routing.url, a, b, cfg.routing.timeoutMs);
+    return await getRoute(fetchFn, cfg.routing.url, a, b, cfg.routing.timeoutMs, heading);
   } catch {
     return null;
   }

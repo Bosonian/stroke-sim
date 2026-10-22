@@ -133,6 +133,7 @@ button, input { font: inherit; }
 .more > * + * { margin-top: 12px; }
 .legend i.bar { width: 22px; height: 0; border-radius: 0; border-top: 4px solid var(--c); background: none; }
 .legend i.bar.dash { border-top-style: dashed; }
+.legend .chip-key { flex: none; font-weight: 700; font-size: 12px; color: #ffffff; background: #D7263D; border-radius: 4px; padding: 0 5px; }
 .legend i.tube-dot { background: #F0E442; border: 2px solid #18222F; }
 
 /* Controls */
@@ -184,6 +185,66 @@ button, input { font: inherit; }
 .ambulance:focus-visible { outline: 3px solid var(--tier-71); outline-offset: 2px; border-radius: 8px; }
 .ambulance svg { width: 100%; height: 100%; display: block; }
 
+/* The race: clock, dots, chips */
+.play { width: 100%; min-height: 44px; font-weight: 700; cursor: pointer; }
+.race-clock {
+  position: absolute; z-index: 3; top: 14px; left: 50%; transform: translateX(-50%);
+  padding: 8px 18px; border-radius: var(--radius-m); background: var(--console); color: var(--on-console);
+  box-shadow: 0 4px 16px rgba(19, 39, 63, 0.3); display: grid; justify-items: center; gap: 2px; min-width: 220px;
+}
+.race-clock strong { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.race-clock span { font-size: 13px; color: var(--on-console-dim); }
+.race-dot { border-radius: 50%; pointer-events: none; }
+.race-dot.grey { width: 26px; height: 26px; background: #5B6B7C; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(19, 39, 63, 0.45); }
+.race-dot.red { position: relative; width: 16px; height: 16px; background: #D7263D; border: 2px solid #ffffff; box-shadow: 0 0 0 0 rgba(215, 38, 61, 0.6); animation: race-pulse 1.2s ease-out infinite; }
+.race-dot.red.still { animation: none; }
+.race-dot.red.faded { background: #8E9AA8; animation: none; }
+.race-dot .ring { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%) rotate(-90deg); overflow: visible; }
+.race-dot .ring circle { fill: none; stroke: #F0E442; stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 1px #18222F); }
+@keyframes race-pulse { 0% { box-shadow: 0 0 0 0 rgba(215, 38, 61, 0.6); } 100% { box-shadow: 0 0 0 16px rgba(215, 38, 61, 0); } }
+.race-chip {
+  pointer-events: none; font-family: var(--font-display); font-weight: 700; font-size: 14px; white-space: nowrap;
+  padding: 2px 8px; border-radius: 6px; background: #ffffff; color: var(--ink); border: 2px solid var(--ink);
+  box-shadow: 0 2px 6px rgba(19, 39, 63, 0.3);
+}
+.race-chip.treat { background: #D7263D; color: #ffffff; border-color: #ffffff; }
+.race-chip.treat.grey { background: #5B6B7C; }
+.race-chip.route { background: var(--ns); color: #ffffff; border-color: #ffffff; }
+.race-chip.clock { background: var(--console); color: var(--on-console); border-color: var(--console); font-variant-numeric: tabular-nums; }
+
+/* The race: two lanes while it runs, the summary at the end */
+.race-lanes {
+  position: absolute; z-index: 2; left: 12px; right: calc(var(--panel-w) + 12px); bottom: 30px;
+  padding: 8px 12px; border-radius: var(--radius-m); background: rgba(255, 255, 255, 0.96); color: var(--ink);
+  box-shadow: 0 4px 16px rgba(19, 39, 63, 0.22); display: grid; gap: 6px; font-size: 13px;
+}
+.lane { display: grid; grid-template-columns: 9.5em 1fr; align-items: center; gap: 8px; }
+.lane-name { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.lane-name::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: #5B6B7C; flex: none; }
+.lane[data-lane="with"] .lane-name::before, .sum-lane.with .lane-name::before { background: #D7263D; }
+.track { position: relative; height: 14px; border-radius: 3px; background: #E9EDF1; overflow: hidden; }
+.seg { position: absolute; top: 3px; bottom: 3px; border-radius: 2px; }
+.seg.drive { background: var(--ink); }
+.seg.branch { background: var(--ns); }
+.seg.wait { background: #B9C4D0; }
+.seg.test { top: 0; bottom: auto; height: 3px; background: #E2D43A; }
+.cover { position: absolute; top: 0; bottom: 0; right: 0; background: #E9EDF1; }
+.head { position: absolute; top: 0; bottom: 0; width: 2px; background: #D7263D; }
+.mark { position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #ffffff; border: 2px solid #D7263D; display: none; }
+.mark.on { display: block; }
+.mark.grey { border-color: #5B6B7C; }
+.sum-title { margin: 0; font-weight: 700; }
+.sum-lane { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; align-items: start; }
+.sum-seq { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.sum-seq .ms { white-space: nowrap; }
+.sum-seq .ms b { font-family: var(--font-display); font-size: 16px; font-variant-numeric: tabular-nums; }
+.sum-seq .ms.match { background: #FBEFF5; border-radius: 4px; padding: 0 4px; }
+.sum-seq .gap { color: #4a5a6d; white-space: nowrap; }
+.sum-seq .gap::before, .sum-seq .gap::after { content: " — "; }
+.sum-seq .treat { white-space: nowrap; font-weight: 700; color: #ffffff; background: #D7263D; border-radius: 4px; padding: 0 5px; }
+.sum-lane.without .sum-seq .treat { background: #5B6B7C; }
+.sum-diffs { margin: 2px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-weight: 700; font-size: 15px; }
+
 /* Popups and dialog */
 .maplibregl-popup-content { font-family: var(--font-body); border-radius: var(--radius-m); padding: 12px 14px; max-width: 290px; }
 .pop-name { font-family: var(--font-display); font-weight: 600; font-size: 18px; line-height: 1.2; margin: 0 0 2px; }
@@ -214,6 +275,10 @@ button, input { font: inherit; }
   .panel-head h1 { font-size: 17px; }
   .watermark { left: 10px; top: 8px; }
   .badge { top: 34px; width: calc(100% - 24px); padding: 8px 12px; }
+  .race-clock { top: 34px; min-width: 0; padding: 6px 14px; }
+  .race-lanes { top: 104px; bottom: auto; left: 8px; right: 8px; max-height: 40vh; overflow: auto; }
+  .lane, .sum-lane { grid-template-columns: 6.5em 1fr; }
+  .race-clock strong { font-size: 26px; }
   .badge strong { font-size: 18px; }
   .badge span { font-size: 13px; }
   .natlegend { display: none; }
@@ -221,4 +286,4 @@ button, input { font: inherit; }
   .watermark strong { font-size: 18px; }
   .watermark span { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .panel { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .panel { transition: none; } .race-dot.red { animation: none; } }

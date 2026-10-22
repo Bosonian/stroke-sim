@@ -1,13 +1,14 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config } from '../config.js';
+import { config, waitMin } from '../config.js?v=11'; // versioned with app.js in index.html, so a new page never links old settings
 import { strings } from './i18n.js';
 import { loadGrid } from './grid.js';
 import { hospitalFeatures, siteKind } from './hospitals.js';
 import { range } from './decide.js';
 import { fetchLive, fetchRoute, routeLabel } from './route.js';
-import { resultMinute, splitRoute, story } from './story.js';
+import { leadTime, midpoint, resultMinute, splitRoute, story } from './story.js';
+import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryRows, diffText } from './race.js';
 import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
@@ -43,6 +44,8 @@ const ui = {
   moveTo: null, // set by initMap: (lon, lat, pan) => void
   live: null, // { key, data } road routes for the position `key`
   natKey: null, // s|k of the national image on the map
+  raceIn: null, // inputs for a race at the current position, or null when it cannot run
+  race: null, // the running or finished race
 };
 const EX = config.excludedSites;
 const posKey = () => `${ui.pos.lon.toFixed(4)},${ui.pos.lat.toFixed(4)}`;
@@ -66,20 +69,21 @@ function scheduleLive() {
     }
     if (key !== posKey()) return; // moved on meanwhile
     ui.live = data ? { key, data } : null;
-    update();
+    if (!ui.race) update(); // never interrupt a race; the next change redraws from the cache
   }, config.routing.debounceMs);
 }
 
-/** Road route from the result point to neurosurgery; undefined while loading, null if it failed. */
-function branchRoute(p, nsIdx) {
-  const key = `${p[0].toFixed(4)},${p[1].toFixed(4)}|${nsIdx}`;
+/** Road route from the result point to neurosurgery, leaving in the ambulance's heading;
+ *  undefined while loading, null if it failed. */
+function branchRoute(p, nsIdx, heading) {
+  const key = `${p[0].toFixed(4)},${p[1].toFixed(4)}|${nsIdx}|${heading == null ? '' : Math.round(heading)}`;
   if (branchCache.has(key)) return branchCache.get(key);
   branchCache.set(key, undefined);
   const h = ui.hospitals[nsIdx];
-  fetchRoute(p, [h.lon, h.lat], config).then((r) => {
+  fetchRoute(p, [h.lon, h.lat], config, fetch, heading).then((r) => {
     if (branchCache.size > 300) branchCache.clear();
     branchCache.set(key, r);
-    update();
+    if (!ui.race) update(); // a late answer (also for an earlier setting) must not stop a race
   });
   return undefined;
 }
@@ -105,6 +109,8 @@ function applyStatic() {
     `<li>${bar(LINE.via, true)}${esc(s.lines.via)}</li>`,
     `<li>${bar(LINE.direct)}${esc(s.lines.direct)}</li>`,
     `<li><i class="tube-dot"></i>${esc(s.resultMarker)}</li>`,
+    `<li><b class="chip-key">${esc(s.chipBp)}</b>${esc(s.raceLegend.bp)}</li>`,
+    `<li><b class="chip-key">${esc(s.chipReversal)}</b>${esc(s.raceLegend.reversal)}</li>`,
   ].join('');
   $('natTitle').textContent = s.national.title;
   $('natList').innerHTML = [15, 10, 5, 0].map((v) => `<li>${dot(DRAW_COLORS[v])}${esc(s.national[v])}</li>`).join('')
@@ -205,13 +211,23 @@ function addLayers(map) {
     paint: { 'line-color': LINE.direct, 'line-width': 6.5 },
   });
   map.addLayer({
-    id: 'links-label', type: 'symbol', source: 'links', filter: ['!=', ['get', 'label'], ''],
+    id: 'links-label', type: 'symbol', source: 'links', filter: ['==', ['get', 'role'], 'label'],
     layout: {
-      'symbol-placement': 'line-center', 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'],
-      'text-size': ['case', ['==', ['get', 'role'], 'direct'], 15, 13], 'text-allow-overlap': true,
+      'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'],
+      'text-size': ['case', ['get', 'big'], 15, 13], 'text-allow-overlap': true,
     },
     paint: { 'text-color': '#18222F', 'text-halo-color': '#ffffff', 'text-halo-width': 2.4 },
   });
+  // the race: trails drawn behind the two dots
+  map.addSource('race', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  const raceLine = (role, paint, dash) => map.addLayer({
+    id: `race-${role}`, type: 'line', source: 'race', filter: ['==', ['get', 'role'], role],
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: dash ? { ...paint, 'line-dasharray': dash } : paint,
+  });
+  raceLine('without', { 'line-color': LINE.via, 'line-width': 3 }, [1.5, 1.5]);
+  raceLine('plan', { 'line-color': LINE.direct, 'line-width': 6.5, 'line-opacity': 0.35 });
+  raceLine('shared', { 'line-color': LINE.drive, 'line-width': 4.5 });
+  raceLine('branch', { 'line-color': LINE.direct, 'line-width': 6.5 });
   map.addLayer({
     id: 'hospitals', type: 'circle', source: 'hospitals',
     paint: {
@@ -273,7 +289,7 @@ function initMap() {
   };
   map.on('error', (e) => { if (!(e && e.error && e.error.name === 'AbortError')) fallback(); });
   setTimeout(fallback, 8000);
-  map.on('style.load', () => { styleReady = true; addLayers(map); update(); });
+  map.on('style.load', () => { styleReady = true; addLayers(map); if (!ui.race) update(); });
   map.on('zoom', showNatLegend);
   map.on('click', 'hospitals', hospitalPopup);
   map.on('mouseenter', 'hospitals', () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -321,7 +337,13 @@ function initMap() {
 // ---------- the map story and the card ----------
 function setLinks(features) {
   const src = ui.map && ui.map.getSource('links');
-  if (src) src.setData({ type: 'FeatureCollection', features });
+  // labels as points half way along each route: labels placed along the line are dropped on winding roads
+  const labels = features.filter((f) => f.properties.label).map((f) => ({
+    type: 'Feature',
+    properties: { role: 'label', label: f.properties.label, big: f.properties.role === 'direct' },
+    geometry: { type: 'Point', coordinates: midpoint(f.geometry.coordinates) },
+  }));
+  if (src) src.setData({ type: 'FeatureCollection', features: [...features, ...labels] });
 }
 
 const line = (role, coords, label = '') => ({ type: 'Feature', properties: { role, label }, geometry: { type: 'LineString', coordinates: coords } });
@@ -351,9 +373,12 @@ function clearStory(notice) {
   $('timingLine').textContent = '';
   $('altBlock').innerHTML = '';
   $('noticeLine').textContent = notice;
+  ui.raceIn = null;
+  setPlay('offline');
 }
 
 function update() {
+  stopRace();
   const s = L();
   renderNational();
   showNatLegend();
@@ -386,13 +411,18 @@ function update() {
   const split = splitRoute(suCoords, suSeg, (resultMin * 60) / state.k, look.su.t * 60);
 
   let branch = null; // road route result point -> neurosurgery (k = 1)
-  if (live && !same && resultMin === 0 && live.ns.geom) branch = { sec: live.ns.sec, m: live.ns.m, geom: [origin, ...live.ns.geom] };
-  else if (live && !same && resultMin > 0 && split.after.length > 1) {
-    const r = branchRoute(split.point, look.ns.idx);
-    if (r) branch = { ...r, geom: [split.point, ...r.geom] };
+  let branchState = null; // the same for the race: undefined while loading, null if missing
+  const inTime = leadTime(state.s, look.su.t * state.k, config.A) >= 0;
+  if (live && !same && resultMin === 0) {
+    if (live.ns.geom) branch = { sec: live.ns.sec, m: live.ns.m, geom: [origin, ...live.ns.geom], segDur: live.ns.segDur ? [0, ...live.ns.segDur] : null };
+    branchState = branch;
+  } else if (live && !same && resultMin > 0 && inTime) {
+    // also when the result arrives exactly at the door (L = 0): the re-route then starts there
+    branchState = branchRoute(split.point, look.ns.idx, split.heading);
+    if (branchState) branch = { ...branchState, geom: [split.point, ...branchState.geom], segDur: branchState.segDur ? [0, ...branchState.segDur] : null };
   }
   const st = story({
-    s: state.s, A: config.A, k: state.k, tier: state.result, look, same, stay: config.stay.median,
+    s: state.s, A: config.A, k: state.k, tier: state.result, look, same, stay: waitMin(config.stay),
     suNsMin: live ? (live.suNs ? live.suNs.sec / 60 : same ? 0 : null) : null,
     pNsMin: branch ? branch.sec / 60 : null,
   });
@@ -428,7 +458,7 @@ function update() {
   let main, sub;
   if (st.mode === 'turn' && st.savingMin != null) {
     main = s.badgeTurn(Math.round(st.savingMin));
-    sub = s.badgeTurnSub({ withMin: Math.round(st.withMin), driveWithout: Math.round(st.withoutMin - config.stay.median), stay: config.stay.median });
+    sub = s.badgeTurnSub({ withMin: Math.round(st.withMin), driveWithout: Math.round(st.withoutMin - waitMin(config.stay)), stay: waitMin(config.stay) });
   } else if (st.mode === 'turn') {
     main = s.badgeTurnOffline;
     sub = live ? '' : s.badgeTurnOfflineSub;
@@ -441,12 +471,276 @@ function update() {
     main = s.badgeBelow; sub = s.badgeBelowSub;
   }
   setBadge(main, sub);
+  prepareRace({ live, look, st, su, ns, same, origin, suCoords, suSeg, branch, branchState });
   const target = st.mode === 'turn' ? ns : su;
   $('decisionLine').textContent = st.mode === 'turn' ? s.decisionTurn : st.mode === 'same' ? s.decisionSame : s.decisionSu;
   $('targetName').textContent = `${target.name}, ${target.city}`;
   $('savingLine').textContent = main;
   $('timingLine').textContent = `${s.resultReady(Math.round(resultMin))}. ${late ? s.afterLine(Math.ceil(-st.lead)) : s.leadLine(Math.round(st.lead))}`;
   $('altBlock').innerHTML = optionLine(s.target.su, look.su) + (same ? '' : optionLine(s.target.ns, look.ns));
+}
+
+// ---------- the race ----------
+const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const EMPTY = { type: 'FeatureCollection', features: [] };
+
+/** Inputs for a race at this position (road routes only), and the Play button's state. */
+function prepareRace({ live, look, st, su, ns, same, origin, suCoords, suSeg, branch, branchState }) {
+  ui.raceIn = null;
+  const blocker = raceBlocker({ live, mode: st.mode, branch: st.mode === 'turn' ? branchState : null, transfer: !!(live && live.suNs && live.suNs.geom) });
+  if (!blocker) {
+    const routes = { su: { coords: suCoords, segDur: suSeg, sec: live.su.sec } };
+    if (branch) routes.branch = { coords: branch.geom, segDur: branch.segDur, sec: branch.sec };
+    if (live.suNs && !same) {
+      routes.transfer = { coords: [ll(su), ...live.suNs.geom], segDur: live.suNs.segDur ? [0, ...live.suNs.segDur] : null, sec: live.suNs.sec };
+    }
+    ui.raceIn = {
+      args: {
+        s: state.s, A: config.A, k: state.k, tier: state.result, mode: st.mode, tSu: look.su.t,
+        suNs: routes.transfer ? live.suNs.sec / 60 : null, nsDirect: look.ns.t, pNs: branch ? branch.sec / 60 : null,
+        scan: waitMin(config.doorToImaging), stay: waitMin(config.stay),
+      },
+      routes, origin, su: ll(su), ns: ll(ns),
+    };
+  }
+  setPlay(blocker);
+}
+
+/** Play / Skip / Replay label; with a blocker (or null) also whether the race can run. */
+function setPlay(blocker) {
+  const b = $('playBtn');
+  const s = L();
+  if (blocker !== undefined) {
+    b.disabled = !!blocker;
+    b.title = blocker ? s.playBlocked[blocker] : '';
+  }
+  b.textContent = ui.race ? (ui.race.done ? s.replay : s.skip) : s.play;
+}
+
+function dotEl(kind) {
+  const el = document.createElement('div');
+  el.className = `race-dot ${kind}`;
+  el.setAttribute('role', 'img');
+  el.setAttribute('aria-label', kind === 'red' ? L().raceWith : L().raceWithout);
+  // the test ring fills over the test's 15 minutes
+  if (kind === 'red') el.innerHTML = '<svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg>';
+  return el;
+}
+
+function chip(text, cls, at, anchor, offset) {
+  const el = document.createElement('div');
+  el.className = `race-chip ${cls}`;
+  el.textContent = text;
+  const m = new maplibregl.Marker({ element: el, anchor, offset }).setLngLat(at).addTo(ui.map);
+  ui.race.marks.push(m);
+  return m;
+}
+
+function startRace() {
+  const inp = ui.raceIn;
+  if (!inp || !ui.map) return;
+  stopRace();
+  const sched = raceSchedule(inp.args);
+  const seg = clockSegments(sched);
+  const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watch: null, suMin: null };
+  ui.race = r;
+  setLinks([]);
+  ui.resultMarker.remove();
+  $('badge').hidden = true;
+  ui.marker.getElement().style.visibility = 'hidden';
+  r.grey = new maplibregl.Marker({ element: dotEl('grey') }).setLngLat(inp.origin).addTo(ui.map);
+  r.red = new maplibregl.Marker({ element: dotEl('red') }).setLngLat(inp.origin).addTo(ui.map);
+  $('raceClock').hidden = false;
+  buildLanes();
+  const b = new maplibregl.LngLatBounds(inp.origin, inp.origin);
+  Object.values(inp.routes).forEach((rt) => rt.coords.forEach((c) => b.extend(c)));
+  ui.map.fitBounds(b, { padding: { top: 110, bottom: 70, left: 60, right: 60 }, maxZoom: 13, duration: reduceMotion() ? 0 : 700 });
+  if (reduceMotion()) r.t0 -= r.total * 1000;
+  setPlay();
+  r.raf = requestAnimationFrame(raceFrame);
+}
+
+function skipRace() {
+  if (ui.race && !ui.race.done) ui.race.t0 = performance.now() - ui.race.total * 1000;
+}
+
+/** Back to the static view (the caller redraws it). */
+function stopRace() {
+  const r = ui.race;
+  if (!r) return;
+  cancelAnimationFrame(r.raf);
+  r.red.remove();
+  r.grey.remove();
+  r.marks.forEach((m) => m.remove());
+  const src = ui.map && ui.map.getSource('race');
+  if (src) src.setData(EMPTY);
+  $('raceClock').hidden = true;
+  $('raceLanes').hidden = true;
+  $('raceLanes').innerHTML = '';
+  ui.marker.getElement().style.visibility = '';
+  ui.race = null;
+  setPlay();
+}
+
+function raceFrame() {
+  const r = ui.race;
+  if (!r) return;
+  const sec = Math.min(r.total, (performance.now() - r.t0) / 1000);
+  drawRace(minuteAt(r.seg, sec));
+  if (sec >= r.total) {
+    r.done = true;
+    setPlay();
+    showSummary();
+    return;
+  }
+  r.raf = requestAnimationFrame(raceFrame);
+}
+
+/** Everything on the map at model minute `min`. */
+function drawRace(min) {
+  const r = ui.race;
+  const { sched, inp } = r;
+  const { k, s: draw, A } = inp.args;
+  const s = L();
+  const at = (lane, m) => positionAt(sched[lane].legs, m, k, inp.routes);
+  r.red.setLngLat(at('with', min));
+  r.grey.setLngLat(at('without', min));
+  const ring = r.red.getElement().querySelector('.ring circle');
+  if (ring) ring.setAttribute('stroke-dashoffset', String(100 * (1 - Math.max(0, Math.min(1, (min + draw) / A)))));
+  for (const lane of ['with', 'without']) {
+    for (const e of sched[lane].events) {
+      const id = `${lane}:${e.key}`;
+      if (min < e.min || r.fired.has(id)) continue;
+      r.fired.add(id);
+      raceEvent(lane, e, at(lane, e.min));
+    }
+  }
+  if (r.watch) r.watch.getElement().textContent = s.stopwatch(Math.max(0, Math.floor(min - r.suMin)));
+  setRaceTrails(min);
+  updateLanes(min);
+  $('clockMain').textContent = min < -0.5 ? s.clockBefore(Math.ceil(-min)) : min < 0.5 ? s.clockDepart : s.clockAt(Math.floor(min));
+  const g = r.seg.find((x) => min >= x.min0 && min <= x.min1) || r.seg[r.seg.length - 1];
+  $('clockSpeed').textContent = g && g.rate > 2 ? s.speedFast : s.speedNormal;
+}
+
+function raceEvent(lane, e, pos) {
+  const r = ui.race;
+  const s = L();
+  const { mode, tier } = r.inp.args;
+  const red = r.red.getElement();
+  if (lane === 'with' && e.key === 'result') {
+    const suAt = r.sched.without.events.find((x) => x.key === 'su').min;
+    const late = mode === 'late';
+    ui.resultMarker.getElement().querySelector('.result-label').textContent = s.results[tier] + (late ? ` · +${Math.max(1, Math.ceil(e.min - suAt))} min` : '');
+    ui.resultMarker.setLngLat(pos).addTo(ui.map);
+    const ring = red.querySelector('.ring');
+    if (ring) ring.remove();
+    if (mode === 'below') red.classList.add('faded');
+    if (late) red.classList.add('still');
+    if (mode === 'turn') {
+      r.plan = true;
+      const c = chip(s.reroute, 'route', pos, 'bottom', [0, -48]);
+      setTimeout(() => c.remove(), 1500);
+    }
+  } else if (e.key === 'bp' || e.key === 'reversal') {
+    const text = `${e.key === 'bp' ? s.chipBp : s.chipReversal}${e.afterScan ? ` · ${s.chipAfterScan}` : ''}`;
+    const row = e.key === 'bp' ? 0 : 26;
+    if (lane === 'with') chip(text, 'treat', pos, 'right', [-16, row]);
+    else chip(text, 'treat grey', pos, 'left', [18, row]);
+  } else if (lane === 'without' && e.key === 'su') {
+    r.suMin = e.min;
+    r.watch = chip(s.stopwatch(0), 'clock', pos, 'top', [0, 18]);
+  } else if (lane === 'without' && e.key === 'transferLeaves' && r.watch) {
+    r.watch.getElement().textContent = s.transferLeaves;
+    r.watch = null;
+  }
+}
+
+/** Two thin lanes under the map, filled up to the clock: drive, wait at the stroke unit, treatment marks. */
+function buildLanes() {
+  const r = ui.race;
+  const s = L();
+  const { sched } = r;
+  const span = sched.end - sched.start || 1;
+  const pct = (m) => `${(((m - sched.start) / span) * 100).toFixed(2)}%`;
+  const width = (a, b) => `${(((b - a) / span) * 100).toFixed(2)}%`;
+  const lane = (key) => {
+    const ln = sched[key];
+    const segs = ln.legs.map((l) => ({ a: l.from, b: l.to, cls: key === 'with' && l.route === 'branch' ? 'branch' : 'drive' }));
+    const su = ln.events.find((e) => e.key === 'su');
+    const leaves = ln.events.find((e) => e.key === 'transferLeaves');
+    if (su) segs.push({ a: su.min, b: leaves ? leaves.min : sched.end, cls: 'wait' });
+    if (key === 'with') segs.push({ a: sched.start, b: ln.events.find((e) => e.key === 'result').min, cls: 'test' });
+    const marks = ln.events.filter((e) => ['bp', 'reversal', 'ns'].includes(e.key))
+      .map((e) => `<i class="mark${key === 'without' ? ' grey' : ''}" data-min="${e.min}" style="left:${pct(e.min)}"></i>`);
+    return `<div class="lane" data-lane="${key}"><span class="lane-name">${esc(key === 'with' ? s.laneWith : s.laneWithout)}</span>`
+      + `<div class="track">${segs.filter((g) => g.b > g.a).map((g) => `<i class="seg ${g.cls}" style="left:${pct(g.a)};width:${width(g.a, g.b)}"></i>`).join('')}`
+      + `<i class="cover"></i>${marks.join('')}<i class="head"></i></div></div>`;
+  };
+  $('raceLanes').innerHTML = lane('with') + lane('without');
+  $('raceLanes').hidden = false;
+  r.pct = pct;
+}
+
+function updateLanes(min) {
+  const r = ui.race;
+  const box = $('raceLanes');
+  box.querySelectorAll('.cover').forEach((el) => { el.style.left = r.pct(min); });
+  box.querySelectorAll('.head').forEach((el) => { el.style.left = r.pct(min); });
+  box.querySelectorAll('.mark').forEach((el) => el.classList.toggle('on', min >= Number(el.dataset.min)));
+}
+
+/** At the end: the time points of both lanes, the intervals between them and the differences. */
+function showSummary() {
+  const r = ui.race;
+  const s = L();
+  const { mode } = r.inp.args;
+  const sum = summaryRows(r.sched);
+  const matchKeys = sum.diffs.map((d) => d.key);
+  const seq = (key) => {
+    const items = [
+      ...sum[key].map((m) => ({ min: m.min, order: 0, html: `<li class="ms${matchKeys.includes(m.key) ? ' match' : ''}"><b>${m.min < 0 ? `−${-m.min}` : m.min}</b> ${esc(s.milestone[m.key])}</li>`, key: m.key })),
+      ...sum.treatments[key].map((t) => ({ min: t.min, order: 1, html: `<li class="treat${matchKeys.includes(t.key) ? ' match' : ''}">${esc(s.milestone[t.key])}${t.afterScan ? ` · ${esc(s.chipAfterScan)}` : ''}</li>` })),
+    ].sort((a, b) => a.min - b.min || a.order - b.order);
+    const out = [];
+    // each interval label goes just before the time point it leads to (after any marks at its start)
+    items.forEach((it) => {
+      const g = it.key && sum.gaps[key].find((x) => x.to === it.key);
+      if (g) out.push(`<li class="gap">${esc(s.gap[g.kind](g.min))}</li>`);
+      out.push(it.html);
+    });
+    return `<div class="sum-lane ${key}"><span class="lane-name">${esc(key === 'with' ? s.laneWith : s.laneWithout)}</span><ol class="sum-seq">${out.join('')}</ol></div>`;
+  };
+  const lines = [];
+  const d = Object.fromEntries(sum.diffs.map((x) => [x.key, x.min]));
+  if (d.bp != null) lines.push(s.endBp(diffText(d.bp, s)));
+  if (d.ns != null) lines.push(s.endNs(diffText(d.ns, s)));
+  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.summaryTitle)}</p>${seq('with')}${seq('without')}`
+    + (lines.length ? `<p class="sum-diffs">${lines.map((l) => `<span>${esc(l)}</span>`).join('')}</p>` : '');
+  $('raceClock').hidden = true;
+  const nsFirst = mode === 'turn' && d.ns != null ? [s.endNs(diffText(d.ns, s)), d.bp != null ? s.endBp(diffText(d.bp, s)) : ''] : [lines[0], lines[1]];
+  const note = s.endNote({ scan: r.inp.args.scan, stay: r.inp.args.stay, transfer: r.sched.without.events.some((e) => e.key === 'transferLeaves') });
+  if (mode === 'below') setBadge(s.badgeBelow, s.badgeBelowSub);
+  else setBadge(nsFirst[0] || s.badgeSame, [nsFirst[1], note].filter(Boolean).join(' · '));
+}
+
+/** Roads driven so far (and, after a re-route, the new route ahead). */
+function setRaceTrails(min) {
+  const r = ui.race;
+  const src = ui.map.getSource('race');
+  if (!src) return;
+  const { routes, args } = r.inp;
+  const line2 = (role, coords) => ({ type: 'Feature', properties: { role }, geometry: { type: 'LineString', coordinates: coords } });
+  const driven = (lane, roleOf) => lane.legs.filter((l) => min > l.from).map((l) => {
+    const rt = routes[l.route];
+    const m = Math.min(min, l.to);
+    return line2(roleOf(l), splitRoute(rt.coords, rt.segDur, ((m - l.from) * 60) / args.k, rt.sec).before);
+  });
+  const feats = [];
+  if (r.plan) feats.push(line2('without', routes.su.coords), line2('plan', routes.branch.coords));
+  feats.push(...driven(r.sched.without, () => 'without'));
+  feats.push(...driven(r.sched.with, (l) => (l.route === 'branch' ? 'branch' : 'shared')));
+  src.setData({ type: 'FeatureCollection', features: feats.filter((f) => f.geometry.coordinates.length > 1) });
 }
 
 // ---------- events ----------
@@ -462,6 +756,26 @@ function bind() {
   });
   $('aboutBtn').addEventListener('click', () => $('aboutDlg').showModal());
   $('evidenceBtn').addEventListener('click', () => $('aboutDlg').showModal());
+  $('playBtn').addEventListener('click', () => {
+    if (ui.race && !ui.race.done) return skipRace();
+    return startRace();
+  });
+  // presenter keys: Space = play / skip, 1-4 = blood-draw time (not while typing or on a button)
+  document.addEventListener('keydown', (e) => {
+    const tag = e.target && e.target.tagName;
+    if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'SUMMARY', 'A'].includes(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ($('aboutDlg').open) return;
+    if (e.key === ' ') {
+      e.preventDefault();
+      if (!$('playBtn').disabled) $('playBtn').click();
+      return;
+    }
+    const i = ['1', '2', '3', '4'].indexOf(e.key);
+    if (i < 0) return;
+    state.s = config.draws[i];
+    buildSegment('drawSeg', 'draw', config.draws, (v) => L().draws[v], state.s);
+    update();
+  });
   $('placeSel').addEventListener('change', (e) => {
     const p = config.places[Number(e.target.value)];
     if (p && ui.moveTo) ui.moveTo(p.lon, p.lat, true);
