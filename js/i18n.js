@@ -114,6 +114,17 @@ export const strings = {
       ? `Without the test: scan ${x.scan} min after arrival at the stroke unit (quick value, lower quartile).`
       : `Without the test: scan ${x.scan} min and transfer ${x.stay} min after arrival at the stroke unit (quick values, lower quartiles).`),
     imagingNote: (d) => `Imaging times are illustrative. Door-to-imaging (arrival to start of CT or MRI) in one German city: median ${d.median} min, middle half ${d.p25}–${d.p75} min (Düsseldorf, 3 stroke centres, 2021–22; Weiss et al. 2024). ${d.p25} min is the lower quartile, not a minimum; many hospitals differ. Literature context, not part of the registered model.`,
+    explain: {
+      source: 'Source',
+      scan: {
+        title: (n) => `Imaging after ${n} min (door-to-imaging)`,
+        body: (d) => `The time from arrival at the stroke unit to the start of CT or MRI. Without the test, blood-pressure lowering and reversal of anticoagulation wait for this scan. In 1,628 ambulance patients with suspected stroke at three Düsseldorf stroke centres (2021–22) the median was ${d.median} min; the middle half took ${d.p25}–${d.p75} min. The simulation uses ${d.p25} min, the quick end, so it does not overstate what the test gains.`,
+      },
+      stay: {
+        title: (n) => `Transfer after ${n} min (door-in-door-out)`,
+        body: (st) => `The time from arrival at the first hospital until the patient leaves it again in the transfer ambulance. In 37 consecutive patients transferred for thrombectomy in the Rhine-Main stroke network (INVN) over 3 months the median was ${st.median} min; the middle half took ${st.p25}–${st.p75} min. The simulation uses ${st.p25} min, the quick end. No German figure for brain bleeds was found; in 19,708 US transfers with intracerebral haemorrhage the median was 155 min (Royan et al., Ann Emerg Med 2025).`,
+      },
+    },
     scenarioLabel: 'Teaching simulation: assumed scenario policy, not a clinical recommendation.',
     evidenceLink: 'Evidence and limits',
     combinedUnavailable: 'Comparison with the nearest hospital that has both neurosurgery and a stroke unit is not available in this version (routes to those centres are not built yet).',
@@ -273,6 +284,17 @@ export const strings = {
       ? `Ohne Test: Bildgebung ${x.scan} min nach Ankunft in der Stroke Unit (schneller Wert, unteres Quartil).`
       : `Ohne Test: Bildgebung ${x.scan} min und Verlegung ${x.stay} min nach Ankunft in der Stroke Unit (schnelle Werte, untere Quartile).`),
     imagingNote: (d) => `Die Zeiten bis zur Bildgebung sind illustrativ. Door-to-Imaging (Ankunft bis Beginn von CT oder MRT) in einer deutschen Stadt: Median ${d.median} min, mittlere Hälfte ${d.p25}–${d.p75} min (Düsseldorf, 3 Stroke-Zentren, 2021–22; Weiss et al. 2024). ${d.p25} min ist das untere Quartil, kein Minimum; viele Kliniken weichen ab. Literaturkontext, nicht Teil des registrierten Modells.`,
+    explain: {
+      source: 'Quelle',
+      scan: {
+        title: (n) => `Bildgebung nach ${n} min (Door-to-Imaging)`,
+        body: (d) => `Die Zeit von der Ankunft in der Stroke Unit bis zum Beginn von CT oder MRT. Ohne Test warten Blutdrucksenkung und Antagonisierung auf diese Bildgebung. Bei 1.628 Rettungsdienstpatienten mit Schlaganfallverdacht in drei Düsseldorfer Stroke-Zentren (2021–22) lag der Median bei ${d.median} min, die mittlere Hälfte bei ${d.p25}–${d.p75} min. Die Simulation nimmt ${d.p25} min, das schnelle Ende, damit sie den Gewinn durch den Test nicht überschätzt.`,
+      },
+      stay: {
+        title: (n) => `Verlegung nach ${n} min (Door-in-door-out)`,
+        body: (st) => `Die Zeit von der Ankunft in der ersten Klinik, bis der Patient sie im Verlegungs-RTW wieder verlässt. Bei 37 konsekutiven Verlegungen zur Thrombektomie im Schlaganfallnetzwerk Rhein-Main (INVN) über 3 Monate lag der Median bei ${st.median} min, die mittlere Hälfte bei ${st.p25}–${st.p75} min. Die Simulation nimmt ${st.p25} min, das schnelle Ende. Für Hirnblutungen fand sich keine deutsche Zahl; in 19.708 US-Verlegungen mit intrazerebraler Blutung lag der Median bei 155 min (Royan et al., Ann Emerg Med 2025).`,
+      },
+    },
     scenarioLabel: 'Lehrsimulation: angenommenes Vorgehen, keine klinische Empfehlung.',
     evidenceLink: 'Evidenz und Grenzen',
     combinedUnavailable: 'Ein Vergleich mit der nächsten Klinik mit Neurochirurgie und Stroke Unit ist in dieser Version nicht verfügbar (die Routen zu diesen Zentren sind noch nicht berechnet).',

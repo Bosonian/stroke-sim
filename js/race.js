@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=19';
+import { resultMinute, splitRoute } from './story.js?v=20';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -279,4 +279,9 @@ export function latestLaps(list, min) {
   if (!past.length) return [];
   const last = past[past.length - 1].min;
   return past.filter((l) => l.min === last);
+}
+
+/** Minute of the day of a clock time (seconds dropped): the race clock starts at the time the race starts. */
+export function minuteOfDay(date) {
+  return date.getHours() * 60 + date.getMinutes();
 }

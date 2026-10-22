@@ -31,12 +31,22 @@ export const config = {
     p25: 21, median: 32, p75: 50,
     use: 'p25', // lower quartile: the race does not overstate what the test gains (author, 21.10.2026)
     source: 'Weiss D, et al. BMC Emerg Med. 2024;24:224 (Table 1)',
+    cite: {
+      authors: 'Weiss D, Rubbert C, Kaschner M, et al.',
+      title: 'Prehospital telemedicine support for urban stroke care: analysis of current state of care and conceptualization.',
+      journal: 'BMC Emerg Med', ref: '2024;24(1):224', doi: '10.1186/s12873-024-01142-3',
+    },
   },
   // Stay at the stroke unit before transfer (door-in-door-out: arrival to departure at the first hospital).
   // German figure (author, 21.10.2026), lower quartile used (docs/superpowers/specs/2026-10-21-race-design.md).
   stay: {
     median: 92, p25: 69, p75: 110,
     use: 'p25',
+    cite: {
+      authors: 'Boss EG, Bohmann FO, Misselwitz B, Kaps M, Neumann-Haefelin T, Pfeilschifter W.',
+      title: 'Quality assurance data for regional drip-and-ship strategies – gearing up the transfer process.',
+      journal: 'Neurol Res Pract', ref: '2021;3:38', doi: '10.1186/s42466-021-00136-x',
+    },
     source: 'Boss EG, et al. Neurol Res Pract. 2021;3:38, doi:10.1186/s42466-021-00136-x (door-in-door-out, 37 consecutive patients transferred for thrombectomy, INVN Rhine-Main stroke network, 3 months)',
     context: 'German figure from thrombectomy transfers; no German figure for brain bleeds was found. For comparison: median 155 min (IQR 101–243) in 19,708 US transfers with intracerebral haemorrhage (Royan R, et al. Ann Emerg Med. 2025;85(2):132–143) and 66 min in 133 thrombectomy transfers in the Rotterdam region (van de Wijdeven et al. Eur Stroke J 2023).',
   },
@@ -80,9 +90,9 @@ export const config = {
   routing: { url: 'https://router.project-osrm.org', candidates: 8, timeoutMs: 5000, debounceMs: 350 },
   // place search as you type: Photon by komoot (OpenStreetMap data), Germany only
   search: { url: 'https://photon.komoot.io', limit: 8, minChars: 3, debounceMs: 250, bbox: [5.8, 47.2, 15.1, 55.1] },
-  // race clock times (teaching assumption, set by the user): assessment on scene starts 12:00, blood is drawn 5 min
+  // race clock times (set by the user): the assessment on scene starts at the current time when the race starts, blood is drawn 5 min
   // later, the ambulance leaves s min after that; times of the model are unchanged
-  clock: { startMin: 720, assessMin: 5 },
+  clock: { assessMin: 5 },
   // hill shading (picture only): Mapzen Terrain Tiles on AWS, open data, no key
   terrain: {
     url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', maxzoom: 11,

@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=19'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=19';
-import { loadGrid } from './grid.js?v=19';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=19';
-import { range } from './decide.js?v=19';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=19';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=19';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=19';
-import { laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=19';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=19';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=19';
-import { START_TIERS, canStart, startDecision } from './start.js?v=19';
+import { config, waitMin } from '../config.js?v=20'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=20';
+import { loadGrid } from './grid.js?v=20';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=20';
+import { range } from './decide.js?v=20';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=20';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=20';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=20';
+import { minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=20';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=20';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=20';
+import { START_TIERS, canStart, startDecision } from './start.js?v=20';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -687,6 +687,7 @@ function startRace() {
   const sched = raceSchedule(inp.args);
   const seg = clockSegments(sched);
   const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watches: doorWatches(sched).map((w) => ({ ...w, chip: null })) };
+  r.clock = { ...config.clock, startMin: minuteOfDay(new Date()) }; // the assessment starts now (each Replay too)
   r.laps = laps(sched, config.clock.assessMin);
   r.lanes = { with: laneLaps(r.laps, 'with'), without: laneLaps(r.laps, 'without') };
   r.lapKey = '';
@@ -796,7 +797,7 @@ function drawRace(min) {
   });
   setRaceTrails(min);
   updateLanes(min);
-  const now = wallTime(min, draw, config.clock);
+  const now = wallTime(min, draw, r.clock);
   $('clockMain').textContent = now;
   const g = r.seg.find((x) => min >= x.min0 && min <= x.min1) || r.seg[r.seg.length - 1];
   const speed = g && g.rate > 2 ? s.speedFast : s.speedNormal;
@@ -821,7 +822,7 @@ function drawLaps(min, now) {
   const key = `${r.laps.filter(done).length}|${now}|${ui.lang}|${r.done}`;
   if (key === r.lapKey) return;
   r.lapKey = key;
-  const item = (l) => `<li><time>${wallTime(l.min, r.inp.args.s, config.clock)}</time><span>${esc(lapText(l, false))}`
+  const item = (l) => `<li><time>${wallTime(l.min, r.inp.args.s, r.clock)}</time><span>${esc(lapText(l, false))}`
     + `${l.inAmbulance ? ` <b class="amb">${esc(s.lap.inAmbulance)}</b>` : ''}</span></li>`;
   const nowLine = r.done ? '' : `<li class="now"><time>${now}</time><span>${esc(s.lap.now)}</span></li>`;
   $('lapWith').innerHTML = r.lanes.with.filter(done).map(item).join('') + nowLine;
@@ -835,7 +836,7 @@ function drawLaps(min, now) {
 function drawHeadline(min) {
   const r = ui.race;
   const s = L();
-  const t = (m) => wallTime(m, r.inp.args.s, config.clock);
+  const t = (m) => wallTime(m, r.inp.args.s, r.clock);
   for (const [lane, id] of [['with', 'phaseWith'], ['without', 'phaseWithout']]) {
     const group = latestLaps(r.lanes[lane], min);
     const at = group.length ? group[0].min : null;
@@ -921,12 +922,23 @@ function updateLanes(min) {
 }
 
 /** At the end: the time points of both lanes, the intervals between them and the differences. */
+/** The waits of the lane without the test, each a collapsible "i" with what it means and its study. */
+function explainers(s, r) {
+  const cite = (c) => `<p class="cite"><span>${esc(s.explain.source)}</span> ${esc(c.authors)} ${esc(c.title)} <i>${esc(c.journal)}</i>. ${esc(c.ref)}. `
+    + `<a href="https://doi.org/${c.doi}" target="_blank" rel="noopener">doi:${c.doi}</a></p>`;
+  const item = (x, n, data) => `<details class="explain"><summary><b class="i" aria-hidden="true">i</b>${esc(x.title(n))}</summary>`
+    + `<p>${esc(x.body(data))}</p>${cite(data.cite)}</details>`;
+  const transfer = r.sched.without.events.some((e) => e.key === 'transferLeaves');
+  return item(s.explain.scan, r.inp.args.scan, config.doorToImaging)
+    + (transfer ? item(s.explain.stay, r.inp.args.stay, config.stay) : '');
+}
+
 function showSummary() {
   const r = ui.race;
   const s = L();
   const { mode } = r.inp.args;
   const rows = summaryTable(r.sched);
-  const fmt = (m) => wallTime(m, r.inp.args.s, config.clock);
+  const fmt = (m) => wallTime(m, r.inp.args.s, r.clock);
   const WHERE = { ambulance: s.inAmbulance, beforeScan: s.beforeScan, afterScan: s.chipAfterScan };
   const cell = (c) => {
     if (!c) return '<td class="none">—</td>';
@@ -942,8 +954,8 @@ function showSummary() {
   const body = rows.map((row) => `<tr class="${COMPARED.includes(row.key) ? 'key' : ''}${row === firstCompared ? ' sep' : ''}"><th scope="row">${esc(s.row[row.key])}</th>`
     + `${cell(row.with)}${cell(row.without)}${diffCell(row.diff)}</tr>`).join('');
   const note = s.endNote({ scan: r.inp.args.scan, stay: r.inp.args.stay, transfer: r.sched.without.events.some((e) => e.key === 'transferLeaves') });
-  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle(wallTime(r.sched.start - config.clock.assessMin, r.inp.args.s, config.clock)))}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
-    + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>`);
+  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle(wallTime(r.sched.start - config.clock.assessMin, r.inp.args.s, r.clock)))}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
+    + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>${explainers(s, r)}`);
   $('raceLanes').classList.add('summary');
   document.body.classList.add('race-summary');
   $('raceClock').hidden = true;
@@ -1079,12 +1091,14 @@ function startPick() {
   ui.picking = true;
   document.body.classList.add('picking');
   $('pickBar').hidden = false;
+  padMap();
 }
 
 function endPick() {
   ui.picking = false;
   document.body.classList.remove('picking');
   $('pickBar').hidden = true;
+  padMap();
   $('startDlg').showModal();
 }
 
@@ -1122,7 +1136,8 @@ const SNAPS = [0.16, 0.38, 0.85];
 const isPhone = () => window.matchMedia('(max-width: 899px)').matches;
 function padMap() {
   if (!ui.map) return;
-  ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: isPhone() && !document.body.classList.contains('racing') ? $('panel').offsetHeight : 0 });
+  const aside = ['racing', 'picking'].some((c) => document.body.classList.contains(c)); // phones: the card is hidden then
+  ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: isPhone() && !aside ? $('panel').offsetHeight : 0 });
 }
 function setSheet(px, animate) {
   const panel = $('panel');
