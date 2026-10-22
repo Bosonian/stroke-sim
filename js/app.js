@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=20'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=20';
-import { loadGrid } from './grid.js?v=20';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=20';
-import { range } from './decide.js?v=20';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=20';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=20';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=20';
-import { minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=20';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=20';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=20';
-import { START_TIERS, canStart, startDecision } from './start.js?v=20';
+import { config, waitMin } from '../config.js?v=21'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=21';
+import { loadGrid } from './grid.js?v=21';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=21';
+import { range } from './decide.js?v=21';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=21';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=21';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=21';
+import { minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=21';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=21';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=21';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=21';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -292,6 +292,7 @@ function initMap() {
   map.on('style.load', () => { styleReady = true; addLayers(map); styleRoads(map, config.terrain); if (!ui.race) update(); });
   map.on('zoom', showNatLegend);
   map.on('zoomend', placeLabels);
+  map.on('zoom', setPickZoom);
   map.on('click', 'hospitals', hospitalPopup);
   map.on('mouseenter', 'hospitals', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'hospitals', () => { map.getCanvas().style.cursor = ''; });
@@ -1092,6 +1093,12 @@ function startPick() {
   document.body.classList.add('picking');
   $('pickBar').hidden = false;
   padMap();
+  setPickZoom();
+}
+
+/** While choosing on the map: "zoom in" until street level. */
+function setPickZoom() {
+  if (ui.picking) $('pickZoom').hidden = !needsZoom(ui.map.getZoom(), config.pickZoom);
 }
 
 function endPick() {

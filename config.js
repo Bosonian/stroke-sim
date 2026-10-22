@@ -93,6 +93,7 @@ export const config = {
   // race clock times (set by the user): the assessment on scene starts at the current time when the race starts, blood is drawn 5 min
   // later, the ambulance leaves s min after that; times of the model are unchanged
   clock: { assessMin: 5 },
+  pickZoom: 11, // choosing the place on the map: below this zoom a line asks to zoom in (streets visible from 11)
   // hill shading (picture only): Mapzen Terrain Tiles on AWS, open data, no key
   terrain: {
     url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', maxzoom: 11,

@@ -13,3 +13,8 @@ export function startDecision({ livePending, blocker }) {
   if (livePending || blocker === 'loading') return 'wait';
   return blocker ? 'blocked' : 'go';
 }
+
+/** Choosing the place on the map: ask to zoom in while the map is zoomed out further than `minZoom` (street level). */
+export function needsZoom(zoom, minZoom) {
+  return zoom < minZoom;
+}

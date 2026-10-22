@@ -365,6 +365,8 @@ button, input { font: inherit; }
 }
 body.picking .panel { pointer-events: none; opacity: 0.45; }
 body.picking .map { cursor: crosshair; }
+.pick-text { display: grid; gap: 2px; }
+.pick-text small { font-size: 13px; font-weight: 400; color: var(--tier-71); }
 .start-note { margin: 8px 0 0; font-size: 13px; color: var(--on-console-dim); }
 .start-status { min-height: 1.4em; margin: 0 0 8px; font-size: 14px; color: var(--on-console-dim); }
 .start .btn.play { width: 100%; }
