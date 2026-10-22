@@ -49,3 +49,27 @@ export async function searchPlaces(q, { fetchFn, lang, places, cfg, signal }) {
     return { local, remote: [], failed: true };
   }
 }
+
+export function reverseUrl(lon, lat, lang, cfg) {
+  return `${cfg.url}/reverse?lon=${lon.toFixed(5)}&lat=${lat.toFixed(5)}&lang=${lang === 'de' ? 'de' : 'en'}`;
+}
+
+/** Photon reverse result -> "Daun, Rheinland-Pfalz" (town, state); '' outside Germany or without a name. */
+export function parseReverse(json) {
+  const f = ((json && json.features) || [])[0];
+  const p = (f && f.properties) || {};
+  if (p.countrycode !== 'DE') return '';
+  const town = p.city || p.locality || p.district || p.county || p.name;
+  return [...new Set([town, p.state].filter(Boolean))].join(', '); // Berlin is town and state
+}
+
+/** Name of a point chosen on the map, or '' when the lookup fails (the caller then says "point on the map"). */
+export async function reversePlace(lon, lat, { fetchFn, lang, cfg, signal }) {
+  try {
+    const res = await fetchFn(reverseUrl(lon, lat, lang, cfg), { signal });
+    if (!res.ok) return '';
+    return parseReverse(await res.json());
+  } catch {
+    return '';
+  }
+}

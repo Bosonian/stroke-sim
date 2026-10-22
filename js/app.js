@@ -8,7 +8,7 @@ import { hospitalFeatures, siteKind } from './hospitals.js?v=16';
 import { range } from './decide.js?v=16';
 import { fetchLive, fetchRoute, routeLabel } from './route.js?v=16';
 import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=16';
-import { matchPresets, searchPlaces } from './search.js?v=16';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=16';
 import { phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=16';
 import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=16';
 import { ROAD_COLORS, styleRoads } from './roads.js?v=16';
@@ -315,6 +315,7 @@ function initMap() {
     if (map.getLayer('hospitals') && map.queryRenderedFeatures(e.point, { layers: ['hospitals'] }).length) return;
     ui.marker.setLngLat(e.lngLat);
     follow();
+    if (ui.picking) finishPick();
   });
   ui.marker.on('drag', follow);
   ui.marker.on('dragend', follow);
@@ -932,7 +933,8 @@ function bind() {
   document.addEventListener('keydown', (e) => {
     const tag = e.target && e.target.tagName;
     if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'SUMMARY', 'A'].includes(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
-    if ($('aboutDlg').open || $('startDlg').open) return;
+    if (ui.picking && e.key === 'Escape') return endPick();
+    if ($('aboutDlg').open || $('startDlg').open || ui.picking) return;
     if (e.key === ' ') {
       e.preventDefault();
       if (!$('playBtn').disabled) $('playBtn').click();
@@ -1004,6 +1006,33 @@ function checkStart(blocker) {
   setTimeout(startRace, 0); // after this redraw
 }
 
+/** "Choose on the map": the box steps aside, one click on the map places the ambulance, the box comes back. */
+function startPick() {
+  closeSearch();
+  $('startDlg').close();
+  ui.picking = true;
+  document.body.classList.add('picking');
+  $('pickBar').hidden = false;
+}
+
+function endPick() {
+  ui.picking = false;
+  document.body.classList.remove('picking');
+  $('pickBar').hidden = true;
+  $('startDlg').showModal();
+}
+
+async function finishPick() {
+  const { lon, lat } = ui.pos;
+  ui.startSel.placed = true;
+  const input = $('placeInput');
+  input.value = L().pickedPoint;
+  endPick();
+  refreshStart();
+  const name = await reversePlace(lon, lat, { fetchFn: fetch, lang: ui.lang, cfg: config.search });
+  if (name && ui.pos.lon === lon && ui.pos.lat === lat) input.value = name; // not moved again meanwhile
+}
+
 function bindStart() {
   ui.startSel = { placed: false, tier: null, draw: null };
   $('startTier').addEventListener('change', (e) => { ui.startSel.tier = e.target.value; refreshStart(); });
@@ -1011,6 +1040,8 @@ function bindStart() {
   $('startGoBtn').addEventListener('click', onStart);
   $('startLangBtn').addEventListener('click', () => $('langBtn').click());
   $('startDlg').addEventListener('cancel', (e) => e.preventDefault()); // the map opens with Start only
+  $('pickMapBtn').addEventListener('click', startPick);
+  $('pickBack').addEventListener('click', endPick);
   $('newSimBtn').addEventListener('click', () => {
     stopRace();
     update();

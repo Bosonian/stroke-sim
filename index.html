@@ -104,6 +104,11 @@
       </footer>
     </aside>
 
+    <div class="pick-bar" id="pickBar" role="status" hidden>
+      <span data-t="pickHint">Click or tap the patient's home on the map.</span>
+      <button class="btn" id="pickBack" type="button" data-t="pickBack">Back</button>
+    </div>
+
     <dialog id="startDlg" class="start" aria-labelledby="startTitle">
       <header class="start-head">
         <h2 id="startTitle" data-t="startTitle">New simulation</h2>
@@ -113,6 +118,7 @@
       <section class="start-step">
         <h3><span class="step-n">1</span><span data-t="startPlaceQ">Where is the patient?</span></h3>
         <div id="startPlace"></div>
+        <button class="btn pick-map" id="pickMapBtn" type="button" data-t="pickOnMap">Choose on the map</button>
       </section>
       <fieldset class="start-step start-tiers" id="startTier">
         <legend><span class="step-n">2</span><span data-t="startTierQ">What probability of a bleed does the test show?</span></legend>
