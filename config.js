@@ -80,6 +80,11 @@ export const config = {
   routing: { url: 'https://router.project-osrm.org', candidates: 8, timeoutMs: 5000, debounceMs: 350 },
   // place search as you type: Photon by komoot (OpenStreetMap data), Germany only
   search: { url: 'https://photon.komoot.io', limit: 8, minChars: 3, debounceMs: 250, bbox: [5.8, 47.2, 15.1, 55.1] },
+  // hill shading (picture only): Mapzen Terrain Tiles on AWS, open data, no key
+  terrain: {
+    url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', maxzoom: 11,
+    attribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Terrain Tiles</a> (Copernicus EU-DEM, SRTM)',
+  },
   start: { lon: 9.1918, lat: 48.8975 }, // Ludwigsburg area, first view
   // jump-to list (keyboard-accessible placement); all checked to have drive-time data on 20.10.2026
   places: [

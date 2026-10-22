@@ -1,16 +1,17 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=15'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=15';
-import { loadGrid } from './grid.js?v=15';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=15';
-import { range } from './decide.js?v=15';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=15';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js?v=15';
-import { matchPresets, searchPlaces } from './search.js?v=15';
-import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=15';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=15';
+import { config, waitMin } from '../config.js?v=16'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=16';
+import { loadGrid } from './grid.js?v=16';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=16';
+import { range } from './decide.js?v=16';
+import { fetchLive, fetchRoute, mainRoad, routeLabel } from './route.js?v=16';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js?v=16';
+import { matchPresets, searchPlaces } from './search.js?v=16';
+import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=16';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=16';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=16';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -112,11 +113,13 @@ function applyStatic() {
     `<li><i class="tube-dot"></i>${esc(s.resultMarker)}</li>`,
     `<li><b class="chip-key">${esc(s.chipBp)}</b>${esc(s.raceLegend.bp)}</li>`,
     `<li><b class="chip-key">${esc(s.chipReversal)}</b>${esc(s.raceLegend.reversal)}</li>`,
+    ...[['autobahn', 'autobahnCase'], ['bundes', 'bundesCase'], ['land', 'landCase']].map(([k, e]) =>
+      `<li><i class="road-key" style="--c:${ROAD_COLORS[k]};--e:${ROAD_COLORS[e]}"></i>${esc(s.roadKey[k])}</li>`),
   ].join('');
   $('natTitle').textContent = s.national.title;
   $('natList').innerHTML = [15, 10, 5, 0].map((v) => `<li>${dot(DRAW_COLORS[v])}${esc(s.national[v])}</li>`).join('')
     + `<li>${dot(LATE_GREY)}${esc(s.national.late)}</li>`;
-  $('aboutBody').innerHTML = [...s.aboutBody, s.stayNote(config.stay), config.stay.source, config.stay.context, s.routingAbout, s.searchAbout,
+  $('aboutBody').innerHTML = [...s.aboutBody, s.stayNote(config.stay), config.stay.source, config.stay.context, s.routingAbout, s.terrainNote, s.searchAbout,
     s.imagingNote(config.doorToImaging), s.combinedUnavailable, s.gapNote,
     `${s.excludedLabel} ${Object.values(EX).map((v) => v.split(':')[0]).join('; ')}.`, config.model.source]
     .map((p) => `<p>${esc(p)}</p>`).join('');
@@ -282,7 +285,7 @@ function initMap() {
   };
   map.on('error', (e) => { if (!(e && e.error && e.error.name === 'AbortError')) fallback(); });
   setTimeout(fallback, 8000);
-  map.on('style.load', () => { styleReady = true; addLayers(map); if (!ui.race) update(); });
+  map.on('style.load', () => { styleReady = true; addLayers(map); styleRoads(map, config.terrain); if (!ui.race) update(); });
   map.on('zoom', showNatLegend);
   map.on('zoomend', placeLabels);
   map.on('click', 'hospitals', hospitalPopup);
@@ -343,6 +346,7 @@ function placeLabels() {
   ui.labelMarks = [];
   if (!ui.map || !ui.links) return;
   const atEnd = new Map(); // pills beside the same hospital are stacked
+  const placed = []; // screen points of pills on routes: one that would cover another moves down a row
   for (const f of ui.links) {
     const c = f.geometry.coordinates;
     const a = ui.map.project(c[0]);
@@ -358,7 +362,12 @@ function placeLabels() {
       atEnd.set(key, n + 1);
       m = new maplibregl.Marker({ element: el, anchor: 'left', offset: [12, n * 24] }).setLngLat(c[c.length - 1]);
     } else {
-      m = new maplibregl.Marker({ element: el }).setLngLat(midpoint(c));
+      const mid = midpoint(c);
+      const p = ui.map.project(mid);
+      let dy = 0;
+      while (placed.some((q) => Math.abs(q.x - p.x) < 170 && Math.abs(q.y - (p.y + dy)) < 24)) dy += 26;
+      placed.push({ x: p.x, y: p.y + dy });
+      m = new maplibregl.Marker({ element: el, offset: [0, dy] }).setLngLat(mid);
     }
     ui.labelMarks.push(m.addTo(ui.map));
   }
@@ -432,7 +441,7 @@ function update() {
   let branchState = null; // the same for the race: undefined while loading, null if missing
   const inTime = leadTime(state.s, look.su.t * state.k, config.A) >= 0;
   if (live && !same && resultMin === 0) {
-    if (live.ns.geom) branch = { sec: live.ns.sec, m: live.ns.m, geom: [origin, ...live.ns.geom], segDur: live.ns.segDur ? [0, ...live.ns.segDur] : null };
+    if (live.ns.geom) branch = { sec: live.ns.sec, m: live.ns.m, geom: [origin, ...live.ns.geom], segDur: live.ns.segDur ? [0, ...live.ns.segDur] : null, steps: live.ns.steps };
     branchState = branch;
   } else if (live && !same && resultMin > 0 && inTime) {
     // also when the result arrives exactly at the door (L = 0): the re-route then starts there
@@ -446,18 +455,19 @@ function update() {
   });
 
   // map lines
-  const suLabel = live && live.su.geom ? routeLabel(live.su.sec, live.su.m, state.k) : '';
+  const via = (steps, fromSec = 0) => { const r = mainRoad(steps, fromSec); return r ? L().via(r) : ''; };
+  const suLabel = live && live.su.geom ? routeLabel(live.su.sec, live.su.m, state.k, via(live.su.steps)) : '';
   // after a result on the way, the stretch still to drive to the stroke unit carries its own time and distance
   const rest = live && live.su.geom ? remainder(suCoords, suSeg, live.su.sec, live.su.m, (resultMin * 60) / state.k) : null;
-  const restLabel = rest && rest.m > 0 ? routeLabel(rest.sec, rest.m, state.k) : '';
+  const restLabel = rest && rest.m > 0 ? routeLabel(rest.sec, rest.m, state.k, via(live.su.steps, (resultMin * 60) / state.k)) : '';
   const transfer = !same ? line('via', live && live.suNs ? [ll(su), ...live.suNs.geom] : [ll(su), ll(ns)],
-    live && live.suNs ? routeLabel(live.suNs.sec, live.suNs.m, state.k) : '') : null;
+    live && live.suNs ? routeLabel(live.suNs.sec, live.suNs.m, state.k, via(live.suNs.steps)) : '') : null;
   const feats = [];
   if (st.mode === 'turn') {
     if (split.before.length > 1) feats.push(line('drive', split.before));
     feats.push(line('via', split.after, restLabel));
     if (transfer) feats.push(transfer);
-    feats.push(line('direct', branch ? branch.geom : [split.point, ll(ns)], branch ? routeLabel(branch.sec, branch.m, state.k) : ''));
+    feats.push(line('direct', branch ? branch.geom : [split.point, ll(ns)], branch ? routeLabel(branch.sec, branch.m, state.k, via(branch.steps)) : ''));
   } else {
     feats.push(line('drive', suCoords, suLabel));
     if (st.mode === 'late' && transfer) feats.push(transfer);
