@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=21'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=21';
-import { loadGrid } from './grid.js?v=21';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=21';
-import { range } from './decide.js?v=21';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=21';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=21';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=21';
-import { minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=21';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=21';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=21';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=21';
+import { config, waitMin } from '../config.js?v=22'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=22';
+import { loadGrid } from './grid.js?v=22';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=22';
+import { range } from './decide.js?v=22';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=22';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=22';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=22';
+import { minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=22';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=22';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=22';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=22';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -34,9 +34,13 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
+function deviceTimeZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; }
+}
+
 const state = { s: config.drawDefault, result: config.resultDefault, k: config.kDefault };
 const ui = {
-  lang: store.get('sim-lang') === 'de' ? 'de' : 'en',
+  lang: startLang(store.get('sim-lang'), deviceTimeZone()),
   pos: { ...config.start },
   grid: null,
   hospitals: [],

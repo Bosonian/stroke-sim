@@ -343,3 +343,10 @@ export const strings = {
     ],
   },
 };
+
+/** First language: the visitor's own earlier choice; otherwise German on devices set to Germany's time zone
+ *  (Europe/Berlin, and Büsingen, a German enclave), English everywhere else. No address lookup leaves the device. */
+export function startLang(saved, timeZone) {
+  if (saved === 'de' || saved === 'en') return saved;
+  return ['Europe/Berlin', 'Europe/Busingen'].includes(timeZone) ? 'de' : 'en';
+}
