@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=22';
+import { resultMinute, splitRoute } from './story.js?v=23';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -284,4 +284,20 @@ export function latestLaps(list, min) {
 /** Minute of the day of a clock time (seconds dropped): the race clock starts at the time the race starts. */
 export function minuteOfDay(date) {
   return date.getHours() * 60 + date.getMinutes();
+}
+
+const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+const mercLat = (y) => (360 / Math.PI) * Math.atan(Math.exp(y)) - 90;
+
+/** [[west, south], [east, north]] holding all points with `origin` in its middle on the web map (Mercator),
+ *  so a fit to it keeps the scene in the centre; the point farthest from the scene sets the size. */
+export function centredBox(points, origin) {
+  const [ox, oy] = [origin[0], mercY(origin[1])];
+  let dx = 0, dy = 0;
+  for (const [x, lat] of points) {
+    dx = Math.max(dx, Math.abs(x - ox));
+    dy = Math.max(dy, Math.abs(mercY(lat) - oy));
+  }
+  if (!dx && !dy) return [origin, origin];
+  return [[ox - dx, mercLat(oy - dy)], [ox + dx, mercLat(oy + dy)]];
 }

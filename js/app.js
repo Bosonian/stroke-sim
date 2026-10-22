@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=22'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=22';
-import { loadGrid } from './grid.js?v=22';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=22';
-import { range } from './decide.js?v=22';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=22';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=22';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=22';
-import { minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=22';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=22';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=22';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=22';
+import { config, waitMin } from '../config.js?v=23'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=23';
+import { loadGrid } from './grid.js?v=23';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=23';
+import { range } from './decide.js?v=23';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=23';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=23';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=23';
+import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=23';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=23';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=23';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=23';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -715,7 +715,10 @@ function startRace() {
   if (isPhone()) {
     fitRace(phoneFit()); // now, and again once the clock lines are written (they set its height)
     requestAnimationFrame(() => requestAnimationFrame(() => { if (ui.race === r) fitRace(phoneFit()); }));
-  } else fitRace({ top: 110, bottom: $('raceLanes').offsetHeight + 30 + 40 });
+  } else { // desktop: the scene stays in the middle of the free map, all routes in view
+    const pts = Object.values(inp.routes).flatMap((rt) => rt.coords);
+    fitRace({ top: 110, bottom: $('raceLanes').offsetHeight + 30 + 40 }, centredBox(pts, inp.origin));
+  }
   if (reduceMotion()) r.t0 -= r.total * 1000;
   setPlay();
   r.raf = requestAnimationFrame(raceFrame);
@@ -727,8 +730,8 @@ function phoneFit() {
   return { top: (clock.offsetTop || 0) + clock.offsetHeight + 14, bottom: $('lapBox').offsetHeight + $('raceBar').offsetHeight + 34 };
 }
 
-function fitRace({ top, bottom }) {
-  ui.map.fitBounds(ui.race.bounds, { padding: { top, bottom, left: 60, right: 60 }, maxZoom: 13, duration: reduceMotion() ? 0 : 700 });
+function fitRace({ top, bottom }, bounds = ui.race.bounds) {
+  ui.map.fitBounds(bounds, { padding: { top, bottom, left: 60, right: 60 }, maxZoom: 13, duration: reduceMotion() ? 0 : 700 });
 }
 
 function skipRace() {
