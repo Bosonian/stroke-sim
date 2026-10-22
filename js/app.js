@@ -7,7 +7,7 @@ import { loadGrid } from './grid.js';
 import { hospitalFeatures, siteKind } from './hospitals.js';
 import { range } from './decide.js';
 import { fetchLive, fetchRoute, routeLabel } from './route.js';
-import { leadTime, midpoint, resultMinute, splitRoute, story } from './story.js';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js';
 import { matchPresets, searchPlaces } from './search.js';
 import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js';
 import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js';
@@ -211,14 +211,6 @@ function addLayers(map) {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': LINE.direct, 'line-width': 6.5 },
   });
-  map.addLayer({
-    id: 'links-label', type: 'symbol', source: 'links', filter: ['==', ['get', 'role'], 'label'],
-    layout: {
-      'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'],
-      'text-size': ['case', ['get', 'big'], 15, 13], 'text-allow-overlap': true,
-    },
-    paint: { 'text-color': '#18222F', 'text-halo-color': '#ffffff', 'text-halo-width': 2.4 },
-  });
   // the race: trails drawn behind the two dots
   map.addSource('race', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   const raceLine = (role, paint, dash) => map.addLayer({
@@ -292,6 +284,7 @@ function initMap() {
   setTimeout(fallback, 8000);
   map.on('style.load', () => { styleReady = true; addLayers(map); if (!ui.race) update(); });
   map.on('zoom', showNatLegend);
+  map.on('zoomend', placeLabels);
   map.on('click', 'hospitals', hospitalPopup);
   map.on('mouseenter', 'hospitals', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'hospitals', () => { map.getCanvas().style.cursor = ''; });
@@ -338,13 +331,37 @@ function initMap() {
 // ---------- the map story and the card ----------
 function setLinks(features) {
   const src = ui.map && ui.map.getSource('links');
-  // labels as points half way along each route: labels placed along the line are dropped on winding roads
-  const labels = features.filter((f) => f.properties.label).map((f) => ({
-    type: 'Feature',
-    properties: { role: 'label', label: f.properties.label, big: f.properties.role === 'direct' },
-    geometry: { type: 'Point', coordinates: midpoint(f.geometry.coordinates) },
-  }));
-  if (src) src.setData({ type: 'FeatureCollection', features: [...features, ...labels] });
+  if (src) src.setData({ type: 'FeatureCollection', features });
+  ui.links = features.filter((f) => f.properties.label);
+  placeLabels();
+}
+
+/** "min · km" pills in the colour of their route: on the route half way along, or, when the route is too short
+ *  on screen (it would sit under the ambulance or the test tube), beside the hospital it leads to. */
+function placeLabels() {
+  (ui.labelMarks || []).forEach((m) => m.remove());
+  ui.labelMarks = [];
+  if (!ui.map || !ui.links) return;
+  const atEnd = new Map(); // pills beside the same hospital are stacked
+  for (const f of ui.links) {
+    const c = f.geometry.coordinates;
+    const a = ui.map.project(c[0]);
+    const b = ui.map.project(c[c.length - 1]);
+    const el = document.createElement('div');
+    el.className = `route-pill ${f.properties.role}`;
+    el.style.setProperty('--c', LINE[f.properties.role] || LINE.drive);
+    el.textContent = f.properties.label;
+    let m;
+    if (Math.hypot(a.x - b.x, a.y - b.y) < 90) {
+      const key = `${Math.round(b.x)},${Math.round(b.y)}`;
+      const n = atEnd.get(key) || 0;
+      atEnd.set(key, n + 1);
+      m = new maplibregl.Marker({ element: el, anchor: 'left', offset: [12, n * 24] }).setLngLat(c[c.length - 1]);
+    } else {
+      m = new maplibregl.Marker({ element: el }).setLngLat(midpoint(c));
+    }
+    ui.labelMarks.push(m.addTo(ui.map));
+  }
 }
 
 const line = (role, coords, label = '') => ({ type: 'Feature', properties: { role, label }, geometry: { type: 'LineString', coordinates: coords } });
@@ -430,12 +447,15 @@ function update() {
 
   // map lines
   const suLabel = live && live.su.geom ? routeLabel(live.su.sec, live.su.m, state.k) : '';
+  // after a result on the way, the stretch still to drive to the stroke unit carries its own time and distance
+  const rest = live && live.su.geom ? remainder(suCoords, suSeg, live.su.sec, live.su.m, (resultMin * 60) / state.k) : null;
+  const restLabel = rest && rest.m > 0 ? routeLabel(rest.sec, rest.m, state.k) : '';
   const transfer = !same ? line('via', live && live.suNs ? [ll(su), ...live.suNs.geom] : [ll(su), ll(ns)],
     live && live.suNs ? routeLabel(live.suNs.sec, live.suNs.m, state.k) : '') : null;
   const feats = [];
   if (st.mode === 'turn') {
     if (split.before.length > 1) feats.push(line('drive', split.before));
-    feats.push(line('via', split.after, suLabel));
+    feats.push(line('via', split.after, restLabel));
     if (transfer) feats.push(transfer);
     feats.push(line('direct', branch ? branch.geom : [split.point, ll(ns)], branch ? routeLabel(branch.sec, branch.m, state.k) : ''));
   } else {

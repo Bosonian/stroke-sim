@@ -205,6 +205,13 @@ button, input { font: inherit; }
 .place-list .opt.active { box-shadow: inset 3px 0 0 var(--ns); }
 .place-list .opt-head { padding: 8px 12px 2px; font-size: 12px; font-weight: 700; color: #4a5a6d; }
 .place-list .opt-note { padding: 8px 12px; font-size: 13px; color: #4a5a6d; }
+.route-pill {
+  pointer-events: none; white-space: nowrap; padding: 1px 8px; border-radius: 999px; border: 2px solid var(--c);
+  background: #ffffff; color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: 13px; line-height: 1.35;
+  font-variant-numeric: tabular-nums; box-shadow: 0 1px 4px rgba(19, 39, 63, 0.3);
+}
+.route-pill.direct { font-size: 14px; }
+.route-pill.via { border-style: dashed; }
 .play { width: 100%; min-height: 44px; font-weight: 700; cursor: pointer; }
 .race-clock {
   position: absolute; z-index: 3; top: 14px; left: calc((100% - var(--panel-w)) / 2); transform: translateX(-50%);

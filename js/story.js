@@ -55,6 +55,20 @@ export function splitRoute(coords, segDur, targetSec, totalSec) {
   return { point: coords[n - 1], before: coords.slice(), after: [coords[n - 1]], heading: bearing(coords[n - 2], coords[n - 1]) };
 }
 
+const pathLen = (c) => c.slice(1).reduce((a, p, i) => {
+  const q = c[i];
+  const kx = Math.cos((((p[1] + q[1]) / 2) * Math.PI) / 180);
+  return a + Math.hypot((p[0] - q[0]) * kx, p[1] - q[1]);
+}, 0);
+
+/** Time (s, k = 1) and road distance (m) left on a route after `targetSec` of driving: the label of the
+ *  stretch from the result point on. */
+export function remainder(coords, segDur, totalSec, meters, targetSec) {
+  const all = pathLen(coords);
+  const after = splitRoute(coords, segDur, targetSec, totalSec).after;
+  return { sec: Math.max(0, totalSec - Math.max(0, targetSec)), m: all > 0 ? Math.round((meters * pathLen(after)) / all) : 0 };
+}
+
 /** Point half way along a line by length, where its "min · km" label goes. */
 export function midpoint(coords) {
   return splitRoute(coords, null, 0.5, 1).point;
