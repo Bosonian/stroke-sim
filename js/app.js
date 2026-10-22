@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=24'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=24';
-import { loadGrid } from './grid.js?v=24';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=24';
-import { range } from './decide.js?v=24';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=24';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=24';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=24';
-import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=24';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=24';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=24';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=24';
+import { config, waitMin } from '../config.js?v=25'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=25';
+import { loadGrid } from './grid.js?v=25';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=25';
+import { range } from './decide.js?v=25';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=25';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=25';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=25';
+import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=25';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=25';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=25';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=25';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -818,7 +818,8 @@ function drawRace(min) {
 /** Text of one milestone ("BP lowering starts"), with "in the ambulance" unless `place` is false. */
 function lapText(l, place = true) {
   const s = L();
-  const text = l.key === 'result' ? s.lap.result(s.results[ui.race.inp.args.tier]) : s.lap[l.key];
+  const key = l.key === 'su' && ui.race.sched.same ? 'suNs' : l.key; // one hospital with both
+  const text = key === 'result' ? s.lap.result(s.results[ui.race.inp.args.tier]) : s.lap[key];
   return place && l.inAmbulance ? `${text} ${s.lap.inAmbulance}` : text;
 }
 

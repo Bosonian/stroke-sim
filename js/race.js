@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=24';
+import { resultMinute, splitRoute } from './story.js?v=25';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -45,7 +45,9 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   const at = (lane, key) => lane.events.find((e) => e.key === key)?.min;
   const diff = (key) => (at(wo, key) != null && at(wi, key) != null ? at(wo, key) - at(wi, key) : null);
   const all = [...wi.events, ...wo.events].map((e) => e.min);
-  return { start: -s, end: Math.max(...all), with: wi, without: wo, diff: { ns: diff('ns'), bp: diff('bp') } };
+  const same = mode === 'same'; // the stroke unit has neurosurgery: arriving there is arriving at neurosurgery
+  if (same) wi.sameSite = wo.sameSite = true;
+  return { start: -s, end: Math.max(...all), with: wi, without: wo, diff: { ns: diff('ns'), bp: diff('bp') }, same };
 }
 
 /** What a dot is doing at minute `min`, for the live heading: 'scene' | 'testScene' | 'testDriving' | 'resultDriving' |
@@ -67,7 +69,7 @@ export function phaseAt(lane, min) {
   const ns = at('ns');
   if (scan != null && min < scan) return 'doorToImage';
   if (leaves != null && min < leaves) return 'waitTransfer';
-  return ns != null && min >= ns ? 'imagedNs' : 'imaged';
+  return (ns != null && min >= ns) || lane.sameSite ? 'imagedNs' : 'imaged';
 }
 
 /** Where a dot is at minute `min`: along its current leg, standing still between and after legs.
@@ -185,11 +187,11 @@ export function summaryTable(sched) {
   const cell = (lane, key) => {
     if (key === 'first') {
       const p = firstOf(lane);
-      return p ? { min: ms(lane, p).min, place: p, gap: gapTo(lane, p) } : null;
+      return p ? { min: ms(lane, p).min, place: sched.same ? 'suNs' : p, gap: gapTo(lane, p) } : null;
     }
-    const m = ms(lane, key);
+    const m = ms(lane, key) || (key === 'ns' && sched.same ? { min: ms(lane, 'su').min } : null);
     // arrival at neurosurgery repeats the first-hospital row after a turn; its drive is shown there
-    if (m) return { min: m.min, gap: key === 'ns' && firstOf(lane) === 'ns' ? null : gapTo(lane, key) };
+    if (m) return { min: m.min, gap: key === 'ns' && (firstOf(lane) === 'ns' || sched.same) ? null : gapTo(lane, key) };
     const t = sum.treatments[lane].find((x) => x.key === key);
     if (!t) return null;
     const arrive = firstOf(lane) ? ms(lane, firstOf(lane)).min : Infinity;
