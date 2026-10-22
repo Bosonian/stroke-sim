@@ -1,16 +1,16 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=14'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=14';
-import { loadGrid } from './grid.js?v=14';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=14';
-import { range } from './decide.js?v=14';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=14';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js?v=14';
-import { matchPresets, searchPlaces } from './search.js?v=14';
-import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=14';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=14';
+import { config, waitMin } from '../config.js?v=15'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=15';
+import { loadGrid } from './grid.js?v=15';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=15';
+import { range } from './decide.js?v=15';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=15';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js?v=15';
+import { matchPresets, searchPlaces } from './search.js?v=15';
+import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=15';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=15';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -565,6 +565,7 @@ function choosePlace(i) {
   input.value = p.label;
   closeSearch();
   if (input.blur) input.blur(); // presenter keys work again
+  if (isPhone()) snapTo(1); // show the map again
   if (ui.moveTo) ui.moveTo(p.lon, p.lat, true);
 }
 
@@ -780,7 +781,7 @@ function raceEvent(lane, e, pos) {
     const text = `${e.key === 'bp' ? s.chipBp : s.chipReversal}${e.afterScan ? ` · ${s.chipAfterScan}` : ''}`;
     const row = e.key === 'bp' ? 0 : 26;
     if (lane === 'with') chip(text, 'treat', pos, 'right', [-16, row]);
-    else chip(text, 'treat grey', pos, 'left', [18, row]);
+    else chip(text, 'treat grey', pos, 'bottom-left', [14, -10 - row]); // above right, clear of the door-to-image chip below
   } else {
     // arrival at a hospital: its door-to-image clock starts
     const w = r.watches.find((x) => x.lane === lane && x.arrive === e.min && (e.key === 'su' || e.key === 'ns'));
