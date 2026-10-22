@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=17'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=17';
-import { loadGrid } from './grid.js?v=17';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=17';
-import { range } from './decide.js?v=17';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=17';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=17';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=17';
-import { laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=17';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=17';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=17';
-import { START_TIERS, canStart, startDecision } from './start.js?v=17';
+import { config, waitMin } from '../config.js?v=18'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=18';
+import { loadGrid } from './grid.js?v=18';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=18';
+import { range } from './decide.js?v=18';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=18';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=18';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=18';
+import { laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=18';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=18';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=18';
+import { START_TIERS, canStart, startDecision } from './start.js?v=18';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -686,7 +686,9 @@ function startRace() {
   const seg = clockSegments(sched);
   const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watches: doorWatches(sched).map((w) => ({ ...w, chip: null })) };
   r.laps = laps(sched, config.clock.assessMin);
+  r.lanes = { with: laneLaps(r.laps, 'with'), without: laneLaps(r.laps, 'without') };
   r.lapKey = '';
+  r.flash = {};
   ui.race = r;
   setLinks([]);
   $('lapBox').hidden = false;
@@ -726,7 +728,8 @@ function stopRace() {
   if (src) src.setData(EMPTY);
   $('raceClock').hidden = true;
   $('lapBox').hidden = true;
-  $('lapList').innerHTML = '';
+  $('lapWith').innerHTML = '';
+  $('lapWithout').innerHTML = '';
   $('raceLanes').hidden = true;
   $('raceLanes').innerHTML = '';
   $('raceLanes').classList.remove('summary');
@@ -761,11 +764,6 @@ function drawRace(min) {
   r.grey.setLngLat(at('without', min));
   const ring = r.red.getElement().querySelector('.ring circle');
   if (ring) ring.setAttribute('stroke-dashoffset', String(100 * (1 - Math.max(0, Math.min(1, (min + draw) / A)))));
-  // live heading under the clock
-  for (const [lane, id] of [['with', 'phaseWith'], ['without', 'phaseWithout']]) {
-    const text = s.phase[phaseAt(sched[lane], min)];
-    if ($(id).textContent !== text) $(id).textContent = text;
-  }
   for (const lane of ['with', 'without']) {
     for (const e of sched[lane].events) {
       const id = `${lane}:${e.key}`;
@@ -790,22 +788,51 @@ function drawRace(min) {
   const rel = min < -0.5 ? s.beforeDeparture : min < 0.5 ? s.clockDepart : s.clockAt(Math.floor(min));
   $('clockSpeed').textContent = `${rel} · ${speed}`;
   drawLaps(min, now);
+  drawHeadline(min);
 }
 
-/** Lap timer: the milestones reached by minute `min`, with their clock times, and a running "now" line. */
+/** Text of one milestone ("BP lowering starts"), with "in the ambulance" unless `place` is false. */
+function lapText(l, place = true) {
+  const s = L();
+  const text = l.key === 'result' ? s.lap.result(s.results[ui.race.inp.args.tier]) : s.lap[l.key];
+  return place && l.inAmbulance ? `${text} ${s.lap.inAmbulance}` : text;
+}
+
+/** Two lap timers, one per dot: the milestones reached by minute `min` with their clock times, and a running "now" line. */
 function drawLaps(min, now) {
   const r = ui.race;
   const s = L();
-  const done = r.laps.filter((l) => l.min <= min + 1e-9);
-  const key = `${done.length}|${now}|${ui.lang}|${r.done}`;
+  const done = (l) => l.min <= min + 1e-9;
+  const key = `${r.laps.filter(done).length}|${now}|${ui.lang}|${r.done}`;
   if (key === r.lapKey) return;
   r.lapKey = key;
-  const text = (l) => (l.key === 'result' ? s.lap.result(s.results[r.inp.args.tier]) : s.lap[l.key]);
-  $('lapList').innerHTML = done.map((l) => `<li class="${l.lane}"><i></i><time>${wallTime(l.min, r.inp.args.s, config.clock)}</time>`
-    + `<span>${esc(text(l))}${l.inAmbulance ? ` <b class="amb">${esc(s.lap.inAmbulance)}</b>` : ''}</span></li>`).join('')
-    + (r.done ? '' : `<li class="now"><i></i><time>${now}</time><span>${esc(s.lap.now)}</span></li>`);
+  const item = (l) => `<li><time>${wallTime(l.min, r.inp.args.s, config.clock)}</time><span>${esc(lapText(l, false))}`
+    + `${l.inAmbulance ? ` <b class="amb">${esc(s.lap.inAmbulance)}</b>` : ''}</span></li>`;
+  const nowLine = r.done ? '' : `<li class="now"><time>${now}</time><span>${esc(s.lap.now)}</span></li>`;
+  $('lapWith').innerHTML = r.lanes.with.filter(done).map(item).join('') + nowLine;
+  $('lapWithout').innerHTML = r.lanes.without.filter(done).map(item).join('') + nowLine;
   const box = $('lapBox');
   if (box.scrollTo) box.scrollTo({ top: box.scrollHeight });
+}
+
+/** Live heading, one line per dot: a new milestone shows for a moment with its clock time, then the ongoing
+ *  phase "since" that time, so the heading and the lap timers tell the same story. */
+function drawHeadline(min) {
+  const r = ui.race;
+  const s = L();
+  const t = (m) => wallTime(m, r.inp.args.s, config.clock);
+  for (const [lane, id] of [['with', 'phaseWith'], ['without', 'phaseWithout']]) {
+    const group = latestLaps(r.lanes[lane], min);
+    const at = group.length ? group[0].min : null;
+    const f = r.flash[lane];
+    if (!f || f.at !== at) r.flash[lane] = { at, until: f ? performance.now() + 2500 : 0 }; // no flash for the opening state
+    const flashing = !r.done && at !== null && performance.now() < r.flash[lane].until;
+    const text = flashing ? `${t(at)} ${group.map(lapText).join(' · ')}`
+      : `${s.phase[phaseAt(r.sched[lane], min)]}${at !== null ? ` · ${s.since(t(at))}` : ''}`;
+    const el = $(id);
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle('event', flashing);
+  }
 }
 
 function raceEvent(lane, e, pos) {
