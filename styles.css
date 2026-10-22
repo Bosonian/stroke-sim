@@ -367,6 +367,22 @@ body.picking .panel { pointer-events: none; opacity: 0.45; }
 body.picking .map { cursor: crosshair; }
 .pick-text { display: grid; gap: 2px; }
 .pick-text small { font-size: 13px; font-weight: 400; color: var(--tier-71); }
+/* zoom hint: a scrolling mouse on desktop, a pinch on touch screens */
+.pick-zoom { display: flex; align-items: center; gap: 8px; }
+.pick-zoom[hidden] { display: none; }
+.pick-zoom svg { flex: none; }
+.ico-pinch, .z-pinch { display: none; }
+@media (hover: none), (pointer: coarse) {
+  .ico-mouse, .z-mouse { display: none; }
+  .ico-pinch, .z-pinch { display: inline; }
+}
+.ico-mouse .wheel { animation: wheel 1.4s ease-in-out infinite; }
+.ico-pinch .tip.a { animation: pinch-a 1.6s ease-in-out infinite; }
+.ico-pinch .tip.b { animation: pinch-b 1.6s ease-in-out infinite; }
+@keyframes wheel { 0%, 20% { transform: translateY(0); opacity: 1; } 70% { transform: translateY(5px); opacity: 0.2; } 100% { transform: translateY(0); opacity: 1; } }
+@keyframes pinch-a { 0%, 15% { transform: translate(0, 0); } 65%, 100% { transform: translate(-5px, 5px); } }
+@keyframes pinch-b { 0%, 15% { transform: translate(0, 0); } 65%, 100% { transform: translate(5px, -5px); } }
+@media (prefers-reduced-motion: reduce) { .ico-mouse .wheel, .ico-pinch .tip { animation: none; } }
 .start-note { margin: 8px 0 0; font-size: 13px; color: var(--on-console-dim); }
 .start-status { min-height: 1.4em; margin: 0 0 8px; font-size: 14px; color: var(--on-console-dim); }
 .start .btn.play { width: 100%; }

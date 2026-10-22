@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=23'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=23';
-import { loadGrid } from './grid.js?v=23';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=23';
-import { range } from './decide.js?v=23';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=23';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=23';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=23';
-import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=23';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=23';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=23';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=23';
+import { config, waitMin } from '../config.js?v=24'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=24';
+import { loadGrid } from './grid.js?v=24';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=24';
+import { range } from './decide.js?v=24';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=24';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=24';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=24';
+import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=24';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=24';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=24';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=24';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
