@@ -1,7 +1,7 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=11'; // versioned with app.js in index.html, so a new page never links old settings
+import { config, waitMin } from '../config.js?v=12'; // versioned with app.js in index.html, so a new page never links old settings
 import { strings } from './i18n.js';
 import { loadGrid } from './grid.js';
 import { hospitalFeatures, siteKind } from './hospitals.js';
@@ -457,7 +457,7 @@ function update() {
   // badge on the map and the three card lines
   let main, sub;
   if (st.mode === 'turn' && st.savingMin != null) {
-    main = s.badgeTurn(Math.round(st.savingMin));
+    main = s.badgeTurn(st.savingWhole);
     sub = s.badgeTurnSub({ withMin: Math.round(st.withMin), driveWithout: Math.round(st.withoutMin - waitMin(config.stay)), stay: waitMin(config.stay) });
   } else if (st.mode === 'turn') {
     main = s.badgeTurnOffline;
@@ -552,12 +552,17 @@ function startRace() {
   r.red = new maplibregl.Marker({ element: dotEl('red') }).setLngLat(inp.origin).addTo(ui.map);
   $('raceClock').hidden = false;
   buildLanes();
-  const b = new maplibregl.LngLatBounds(inp.origin, inp.origin);
-  Object.values(inp.routes).forEach((rt) => rt.coords.forEach((c) => b.extend(c)));
-  ui.map.fitBounds(b, { padding: { top: 110, bottom: 70, left: 60, right: 60 }, maxZoom: 13, duration: reduceMotion() ? 0 : 700 });
+  r.bounds = new maplibregl.LngLatBounds(inp.origin, inp.origin);
+  Object.values(inp.routes).forEach((rt) => rt.coords.forEach((c) => r.bounds.extend(c)));
+  // keep the routes clear of the clock (top) and the lanes (bottom; hidden on phones while racing)
+  fitRace({ top: 110, bottom: (isPhone() ? 0 : $('raceLanes').offsetHeight + 30) + 40 });
   if (reduceMotion()) r.t0 -= r.total * 1000;
   setPlay();
   r.raf = requestAnimationFrame(raceFrame);
+}
+
+function fitRace({ top, bottom }) {
+  ui.map.fitBounds(ui.race.bounds, { padding: { top, bottom, left: 60, right: 60 }, maxZoom: 13, duration: reduceMotion() ? 0 : 700 });
 }
 
 function skipRace() {
@@ -577,6 +582,8 @@ function stopRace() {
   $('raceClock').hidden = true;
   $('raceLanes').hidden = true;
   $('raceLanes').innerHTML = '';
+  $('raceLanes').classList.remove('summary');
+  document.body.classList.remove('race-summary');
   ui.marker.getElement().style.visibility = '';
   ui.race = null;
   setPlay();
@@ -620,7 +627,8 @@ function drawRace(min) {
   updateLanes(min);
   $('clockMain').textContent = min < -0.5 ? s.clockBefore(Math.ceil(-min)) : min < 0.5 ? s.clockDepart : s.clockAt(Math.floor(min));
   const g = r.seg.find((x) => min >= x.min0 && min <= x.min1) || r.seg[r.seg.length - 1];
-  $('clockSpeed').textContent = g && g.rate > 2 ? s.speedFast : s.speedNormal;
+  const speed = g && g.rate > 2 ? s.speedFast : s.speedNormal;
+  $('clockSpeed').textContent = min < -0.5 ? `${s.beforeDeparture} · ${speed}` : speed;
 }
 
 function raceEvent(lane, e, pos) {
@@ -715,13 +723,21 @@ function showSummary() {
   const d = Object.fromEntries(sum.diffs.map((x) => [x.key, x.min]));
   if (d.bp != null) lines.push(s.endBp(diffText(d.bp, s)));
   if (d.ns != null) lines.push(s.endNs(diffText(d.ns, s)));
-  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.summaryTitle)}</p>${seq('with')}${seq('without')}`
-    + (lines.length ? `<p class="sum-diffs">${lines.map((l) => `<span>${esc(l)}</span>`).join('')}</p>` : '');
-  $('raceClock').hidden = true;
-  const nsFirst = mode === 'turn' && d.ns != null ? [s.endNs(diffText(d.ns, s)), d.bp != null ? s.endBp(diffText(d.bp, s)) : ''] : [lines[0], lines[1]];
   const note = s.endNote({ scan: r.inp.args.scan, stay: r.inp.args.stay, transfer: r.sched.without.events.some((e) => e.key === 'transferLeaves') });
+  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.summaryTitle)}</p>${seq('with')}${seq('without')}`
+    + (lines.length ? `<p class="sum-diffs">${lines.map((l) => `<span>${esc(l)}</span>`).join('')}</p>` : '')
+    + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>`);
+  $('raceLanes').classList.add('summary');
+  document.body.classList.add('race-summary');
+  $('raceClock').hidden = true;
+  // the badge carries the one headline; the summary has the details (on phones the summary replaces the badge)
+  const headline = mode === 'turn' && d.ns != null ? s.endNs(diffText(d.ns, s)) : lines[0];
   if (mode === 'below') setBadge(s.badgeBelow, s.badgeBelowSub);
-  else setBadge(nsFirst[0] || s.badgeSame, [nsFirst[1], note].filter(Boolean).join(' · '));
+  else setBadge(headline || s.badgeSame, '');
+  const lanes = $('raceLanes');
+  const badge = $('badge');
+  if (isPhone()) fitRace({ top: lanes.offsetTop + lanes.offsetHeight + 20, bottom: 30 });
+  else fitRace({ top: badge.offsetTop + badge.offsetHeight + 20, bottom: lanes.offsetHeight + 30 + 30 });
 }
 
 /** Roads driven so far (and, after a re-route, the new route ahead). */

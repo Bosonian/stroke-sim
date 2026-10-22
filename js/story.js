@@ -82,6 +82,7 @@ export function story({ s, A, k, tier, look, same, stay, suNsMin, pNsMin }) {
     withoutMin: driveWithout + stay,
     withMin,
     savingMin: driveWithout + stay - withMin,
+    savingWhole: Math.round(driveWithout + stay) - Math.round(withMin), // what the race summary shows
     driveSavingMin: driveWithout - withMin,
   };
 }

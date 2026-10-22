@@ -92,8 +92,8 @@ button, input { font: inherit; }
 
 /* Map story: badge, result marker, national legend */
 .badge {
-  position: absolute; z-index: 2; top: 14px; left: 50%; transform: translateX(-50%);
-  width: min(560px, calc(100% - 340px)); padding: 12px 16px; border-radius: var(--radius-m);
+  position: absolute; z-index: 2; top: 14px; left: calc((100% - var(--panel-w)) / 2); transform: translateX(-50%);
+  width: min(560px, calc(100% - var(--panel-w) - 48px)); padding: 12px 16px; border-radius: var(--radius-m);
   background: #ffffff; color: var(--ink); box-shadow: 0 4px 16px rgba(19, 39, 63, 0.22);
   display: grid; gap: 4px; border-left: 6px solid var(--ns);
 }
@@ -188,7 +188,7 @@ button, input { font: inherit; }
 /* The race: clock, dots, chips */
 .play { width: 100%; min-height: 44px; font-weight: 700; cursor: pointer; }
 .race-clock {
-  position: absolute; z-index: 3; top: 14px; left: 50%; transform: translateX(-50%);
+  position: absolute; z-index: 3; top: 14px; left: calc((100% - var(--panel-w)) / 2); transform: translateX(-50%);
   padding: 8px 18px; border-radius: var(--radius-m); background: var(--console); color: var(--on-console);
   box-shadow: 0 4px 16px rgba(19, 39, 63, 0.3); display: grid; justify-items: center; gap: 2px; min-width: 220px;
 }
@@ -244,6 +244,7 @@ button, input { font: inherit; }
 .sum-seq .treat { white-space: nowrap; font-weight: 700; color: #ffffff; background: #D7263D; border-radius: 4px; padding: 0 5px; }
 .sum-lane.without .sum-seq .treat { background: #5B6B7C; }
 .sum-diffs { margin: 2px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-weight: 700; font-size: 15px; }
+.sum-note { margin: 0; font-size: 12px; color: #4a5a6d; }
 
 /* Popups and dialog */
 .maplibregl-popup-content { font-family: var(--font-body); border-radius: var(--radius-m); padding: 12px 14px; max-width: 290px; }
@@ -274,9 +275,12 @@ button, input { font: inherit; }
   .sheet-grip { width: 44px; height: 5px; border-radius: 3px; background: var(--console-line); }
   .panel-head h1 { font-size: 17px; }
   .watermark { left: 10px; top: 8px; }
-  .badge { top: 34px; width: calc(100% - 24px); padding: 8px 12px; }
-  .race-clock { top: 34px; min-width: 0; padding: 6px 14px; }
-  .race-lanes { top: 104px; bottom: auto; left: 8px; right: 8px; max-height: 40vh; overflow: auto; }
+  .badge { top: 34px; left: 50%; width: calc(100% - 24px); padding: 8px 12px; }
+  .race-clock { top: 34px; left: 50%; min-width: 0; padding: 6px 14px; }
+  /* phones: no lanes while racing (the map is small); the summary replaces the badge at the end */
+  .race-lanes:not(.summary) { display: none; }
+  .race-lanes { top: 34px; bottom: auto; left: 8px; right: 8px; max-height: 55vh; overflow: auto; }
+  body.race-summary .badge { display: none; }
   .lane, .sum-lane { grid-template-columns: 6.5em 1fr; }
   .race-clock strong { font-size: 26px; }
   .badge strong { font-size: 18px; }
