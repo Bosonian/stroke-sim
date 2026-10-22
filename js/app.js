@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=18'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=18';
-import { loadGrid } from './grid.js?v=18';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=18';
-import { range } from './decide.js?v=18';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=18';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=18';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=18';
-import { laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=18';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=18';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=18';
-import { START_TIERS, canStart, startDecision } from './start.js?v=18';
+import { config, waitMin } from '../config.js?v=19'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=19';
+import { loadGrid } from './grid.js?v=19';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=19';
+import { range } from './decide.js?v=19';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=19';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=19';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=19';
+import { laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=19';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=19';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=19';
+import { START_TIERS, canStart, startDecision } from './start.js?v=19';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -657,6 +657,8 @@ function setPlay(blocker) {
     b.title = blocker ? s.playBlocked[blocker] : '';
   }
   b.textContent = ui.race ? (ui.race.done ? s.replay : s.skip) : s.play;
+  $('raceBarPlay').textContent = b.textContent; // the phone race bar mirrors it
+  $('raceBarPlay').disabled = b.disabled;
 }
 
 function dotEl(kind) {
@@ -690,6 +692,8 @@ function startRace() {
   r.lapKey = '';
   r.flash = {};
   ui.race = r;
+  document.body.classList.add('racing');
+  padMap(); // on phones the card steps aside during the race
   setLinks([]);
   $('lapBox').hidden = false;
   ui.resultMarker.remove();
@@ -702,10 +706,19 @@ function startRace() {
   r.bounds = new maplibregl.LngLatBounds(inp.origin, inp.origin);
   Object.values(inp.routes).forEach((rt) => rt.coords.forEach((c) => r.bounds.extend(c)));
   // keep the routes clear of the clock (top) and the lanes (bottom; hidden on phones while racing)
-  fitRace({ top: 110, bottom: (isPhone() ? 0 : $('raceLanes').offsetHeight + 30) + 40 });
+  if (isPhone()) {
+    fitRace(phoneFit()); // now, and again once the clock lines are written (they set its height)
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (ui.race === r) fitRace(phoneFit()); }));
+  } else fitRace({ top: 110, bottom: $('raceLanes').offsetHeight + 30 + 40 });
   if (reduceMotion()) r.t0 -= r.total * 1000;
   setPlay();
   r.raf = requestAnimationFrame(raceFrame);
+}
+
+/** Phone race view: the free map between the clock (top) and the lap timers and bar (bottom). */
+function phoneFit() {
+  const clock = $('raceClock');
+  return { top: (clock.offsetTop || 0) + clock.offsetHeight + 14, bottom: $('lapBox').offsetHeight + $('raceBar').offsetHeight + 34 };
 }
 
 function fitRace({ top, bottom }) {
@@ -726,6 +739,8 @@ function stopRace() {
   r.marks.forEach((m) => m.remove());
   const src = ui.map && ui.map.getSource('race');
   if (src) src.setData(EMPTY);
+  document.body.classList.remove('racing');
+  padMap();
   $('raceClock').hidden = true;
   $('lapBox').hidden = true;
   $('lapWith').innerHTML = '';
@@ -940,7 +955,7 @@ function showSummary() {
   else setBadge(headline || s.badgeSame, '');
   const lanes = $('raceLanes');
   const badge = $('badge');
-  if (isPhone()) fitRace({ top: lanes.offsetTop + lanes.offsetHeight + 20, bottom: 30 });
+  if (isPhone()) fitRace({ top: (lanes.offsetTop || 0) + lanes.offsetHeight + 20, bottom: $('raceBar').offsetHeight + 30 });
   else fitRace({ top: badge.offsetTop + badge.offsetHeight + 20, bottom: lanes.offsetHeight + 30 + 30 });
 }
 
@@ -1092,6 +1107,8 @@ function bindStart() {
   $('startLangBtn').addEventListener('click', () => $('langBtn').click());
   $('startDlg').addEventListener('cancel', (e) => e.preventDefault()); // the map opens with Start only
   $('pickMapBtn').addEventListener('click', startPick);
+  $('raceBarPlay').addEventListener('click', () => $('playBtn').click());
+  $('raceBarEnd').addEventListener('click', () => { stopRace(); update(); });
   $('pickBack').addEventListener('click', endPick);
   $('newSimBtn').addEventListener('click', () => {
     stopRace();
@@ -1105,7 +1122,7 @@ const SNAPS = [0.16, 0.38, 0.85];
 const isPhone = () => window.matchMedia('(max-width: 899px)').matches;
 function padMap() {
   if (!ui.map) return;
-  ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: isPhone() ? $('panel').offsetHeight : 0 });
+  ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: isPhone() && !document.body.classList.contains('racing') ? $('panel').offsetHeight : 0 });
 }
 function setSheet(px, animate) {
   const panel = $('panel');
@@ -1116,7 +1133,7 @@ function setSheet(px, animate) {
   panel.classList.toggle('open', open);
   $('sheetHandle').setAttribute('aria-expanded', String(open));
   // set padding now too: with reduced motion there is no transitionend event
-  if (ui.map) ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: Math.min(px, panel.scrollHeight) });
+  if (ui.map && !document.body.classList.contains('racing')) ui.map.setPadding({ top: 0, left: 0, right: 0, bottom: Math.min(px, panel.scrollHeight) });
 }
 function snapTo(i) {
   if (!isPhone()) return; // the handle exists only in the phone layout
