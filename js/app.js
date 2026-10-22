@@ -1,16 +1,16 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=13'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js';
-import { loadGrid } from './grid.js';
-import { hospitalFeatures, siteKind } from './hospitals.js';
-import { range } from './decide.js';
-import { fetchLive, fetchRoute, routeLabel } from './route.js';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js';
-import { matchPresets, searchPlaces } from './search.js';
-import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js';
+import { config, waitMin } from '../config.js?v=14'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=14';
+import { loadGrid } from './grid.js?v=14';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=14';
+import { range } from './decide.js?v=14';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=14';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js?v=14';
+import { matchPresets, searchPlaces } from './search.js?v=14';
+import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=14';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=14';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
