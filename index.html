@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
   <main class="app">
@@ -39,6 +39,10 @@
     </div>
 
     <div class="race-lanes" id="raceLanes" aria-live="polite" hidden></div>
+
+    <div class="lap-box" id="lapBox" hidden>
+      <ol class="lap-list" id="lapList"></ol>
+    </div>
 
     <div class="natlegend" id="natLegend" hidden>
       <p class="natlegend-title" id="natTitle"></p>
@@ -140,6 +144,6 @@
   </main>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script type="module" src="js/app.js?v=16"></script>
+  <script type="module" src="js/app.js?v=17"></script>
 </body>
 </html>

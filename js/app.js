@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=16'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings } from './i18n.js?v=16';
-import { loadGrid } from './grid.js?v=16';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=16';
-import { range } from './decide.js?v=16';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=16';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=16';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=16';
-import { phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=16';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=16';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=16';
-import { START_TIERS, canStart, startDecision } from './start.js?v=16';
+import { config, waitMin } from '../config.js?v=17'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings } from './i18n.js?v=17';
+import { loadGrid } from './grid.js?v=17';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=17';
+import { range } from './decide.js?v=17';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=17';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=17';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=17';
+import { laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=17';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=17';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=17';
+import { START_TIERS, canStart, startDecision } from './start.js?v=17';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -685,8 +685,11 @@ function startRace() {
   const sched = raceSchedule(inp.args);
   const seg = clockSegments(sched);
   const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watches: doorWatches(sched).map((w) => ({ ...w, chip: null })) };
+  r.laps = laps(sched, config.clock.assessMin);
+  r.lapKey = '';
   ui.race = r;
   setLinks([]);
+  $('lapBox').hidden = false;
   ui.resultMarker.remove();
   $('badge').hidden = true;
   ui.marker.getElement().style.visibility = 'hidden';
@@ -722,6 +725,8 @@ function stopRace() {
   const src = ui.map && ui.map.getSource('race');
   if (src) src.setData(EMPTY);
   $('raceClock').hidden = true;
+  $('lapBox').hidden = true;
+  $('lapList').innerHTML = '';
   $('raceLanes').hidden = true;
   $('raceLanes').innerHTML = '';
   $('raceLanes').classList.remove('summary');
@@ -735,9 +740,9 @@ function raceFrame() {
   const r = ui.race;
   if (!r) return;
   const sec = Math.min(r.total, (performance.now() - r.t0) / 1000);
-  drawRace(sec >= r.total ? r.sched.end : minuteAt(r.seg, sec)); // the last frame exactly at the end (no rounding short of it)
-  if (sec >= r.total) {
-    r.done = true;
+  if (sec >= r.total) r.done = true; // the lap list then drops its "now" line
+  drawRace(r.done ? r.sched.end : minuteAt(r.seg, sec)); // the last frame exactly at the end (no rounding short of it)
+  if (r.done) {
     setPlay();
     showSummary();
     return;
@@ -778,10 +783,29 @@ function drawRace(min) {
   });
   setRaceTrails(min);
   updateLanes(min);
-  $('clockMain').textContent = min < -0.5 ? s.clockBefore(Math.ceil(-min)) : min < 0.5 ? s.clockDepart : s.clockAt(Math.floor(min));
+  const now = wallTime(min, draw, config.clock);
+  $('clockMain').textContent = now;
   const g = r.seg.find((x) => min >= x.min0 && min <= x.min1) || r.seg[r.seg.length - 1];
   const speed = g && g.rate > 2 ? s.speedFast : s.speedNormal;
-  $('clockSpeed').textContent = min < -0.5 ? `${s.beforeDeparture} · ${speed}` : speed;
+  const rel = min < -0.5 ? s.beforeDeparture : min < 0.5 ? s.clockDepart : s.clockAt(Math.floor(min));
+  $('clockSpeed').textContent = `${rel} · ${speed}`;
+  drawLaps(min, now);
+}
+
+/** Lap timer: the milestones reached by minute `min`, with their clock times, and a running "now" line. */
+function drawLaps(min, now) {
+  const r = ui.race;
+  const s = L();
+  const done = r.laps.filter((l) => l.min <= min + 1e-9);
+  const key = `${done.length}|${now}|${ui.lang}|${r.done}`;
+  if (key === r.lapKey) return;
+  r.lapKey = key;
+  const text = (l) => (l.key === 'result' ? s.lap.result(s.results[r.inp.args.tier]) : s.lap[l.key]);
+  $('lapList').innerHTML = done.map((l) => `<li class="${l.lane}"><i></i><time>${wallTime(l.min, r.inp.args.s, config.clock)}</time>`
+    + `<span>${esc(text(l))}${l.inAmbulance ? ` <b class="amb">${esc(s.lap.inAmbulance)}</b>` : ''}</span></li>`).join('')
+    + (r.done ? '' : `<li class="now"><i></i><time>${now}</time><span>${esc(s.lap.now)}</span></li>`);
+  const box = $('lapBox');
+  if (box.scrollTo) box.scrollTo({ top: box.scrollHeight });
 }
 
 function raceEvent(lane, e, pos) {
@@ -860,7 +884,7 @@ function showSummary() {
   const s = L();
   const { mode } = r.inp.args;
   const rows = summaryTable(r.sched);
-  const fmt = (m) => `${m < 0 ? `−${-m}` : m} min`;
+  const fmt = (m) => wallTime(m, r.inp.args.s, config.clock);
   const WHERE = { ambulance: s.inAmbulance, beforeScan: s.beforeScan, afterScan: s.chipAfterScan };
   const cell = (c) => {
     if (!c) return '<td class="none">—</td>';
@@ -876,7 +900,7 @@ function showSummary() {
   const body = rows.map((row) => `<tr class="${COMPARED.includes(row.key) ? 'key' : ''}${row === firstCompared ? ' sep' : ''}"><th scope="row">${esc(s.row[row.key])}</th>`
     + `${cell(row.with)}${cell(row.without)}${diffCell(row.diff)}</tr>`).join('');
   const note = s.endNote({ scan: r.inp.args.scan, stay: r.inp.args.stay, transfer: r.sched.without.events.some((e) => e.key === 'transferLeaves') });
-  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle)}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
+  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle(wallTime(r.sched.start - config.clock.assessMin, r.inp.args.s, config.clock)))}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
     + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>`);
   $('raceLanes').classList.add('summary');
   document.body.classList.add('race-summary');
@@ -1060,6 +1084,7 @@ function setSheet(px, animate) {
   const panel = $('panel');
   panel.style.transition = animate ? '' : 'none';
   panel.style.maxHeight = `${px}px`;
+  if (document.documentElement.style) document.documentElement.style.setProperty('--sheet-h', `${px}px`); // lap box sits above the sheet
   const open = px > window.innerHeight * 0.5;
   panel.classList.toggle('open', open);
   $('sheetHandle').setAttribute('aria-expanded', String(open));

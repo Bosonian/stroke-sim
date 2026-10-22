@@ -80,6 +80,9 @@ export const config = {
   routing: { url: 'https://router.project-osrm.org', candidates: 8, timeoutMs: 5000, debounceMs: 350 },
   // place search as you type: Photon by komoot (OpenStreetMap data), Germany only
   search: { url: 'https://photon.komoot.io', limit: 8, minChars: 3, debounceMs: 250, bbox: [5.8, 47.2, 15.1, 55.1] },
+  // race clock times (teaching assumption, set by the user): assessment on scene starts 12:00, blood is drawn 5 min
+  // later, the ambulance leaves s min after that; times of the model are unchanged
+  clock: { startMin: 720, assessMin: 5 },
   // hill shading (picture only): Mapzen Terrain Tiles on AWS, open data, no key
   terrain: {
     url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png', maxzoom: 11,

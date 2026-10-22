@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=16';
+import { resultMinute, splitRoute } from './story.js?v=17';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -235,4 +235,35 @@ export function diffText(min, L) {
   const n = Math.round(min);
   if (n === 0) return L.sameTime;
   return n > 0 ? L.sooner(n) : L.later(-n);
+}
+
+/** "12:43": clock time at race minute `min` (minutes after departure). The assessment starts at clock.startMin
+ *  (minutes after midnight), blood is drawn clock.assessMin later, the ambulance leaves s minutes after that. */
+export function wallTime(min, s, clock) {
+  const t = Math.round(clock.startMin + clock.assessMin + s + min);
+  const h = Math.floor(t / 60) % 24;
+  return `${String(h).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+
+const LAP_KEYS = ['assess', 'drawn', 'depart', 'result', 'su', 'ns', 'scan', 'bp', 'reversal', 'transferLeaves'];
+
+/** Lap list: [{ key, min, lane: 'with' | 'without' | 'both', inAmbulance? }] in time order, starting with the
+ *  assessment (`assessMin` before the blood draw); a milestone both dots reach at the same minute appears once. */
+export function laps(sched, assessMin) {
+  const out = [{ key: 'assess', min: sched.start - assessMin, lane: 'both' }];
+  const seen = new Map();
+  for (const lane of ['with', 'without']) {
+    const events = sched[lane].events;
+    const firstDoor = Math.min(...events.filter((e) => e.key === 'su' || e.key === 'ns').map((e) => e.min));
+    for (const e of events) {
+      if (!LAP_KEYS.includes(e.key)) continue;
+      const id = `${e.key}@${e.min.toFixed(4)}`;
+      if (seen.has(id)) { seen.get(id).lane = 'both'; continue; }
+      const lap = { key: e.key, min: e.min, lane };
+      if ((e.key === 'bp' || e.key === 'reversal') && e.min < firstDoor) lap.inAmbulance = true;
+      seen.set(id, lap);
+      out.push(lap);
+    }
+  }
+  return out.sort((a, b) => a.min - b.min || LAP_KEYS.indexOf(a.key) - LAP_KEYS.indexOf(b.key));
 }
