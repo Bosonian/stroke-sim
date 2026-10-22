@@ -1,14 +1,15 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=12'; // versioned with app.js in index.html, so a new page never links old settings
+import { config, waitMin } from '../config.js?v=13'; // versioned with app.js in index.html, so a new page never links old settings
 import { strings } from './i18n.js';
 import { loadGrid } from './grid.js';
 import { hospitalFeatures, siteKind } from './hospitals.js';
 import { range } from './decide.js';
 import { fetchLive, fetchRoute, routeLabel } from './route.js';
 import { leadTime, midpoint, resultMinute, splitRoute, story } from './story.js';
-import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryRows, diffText } from './race.js';
+import { matchPresets, searchPlaces } from './search.js';
+import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js';
 import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
@@ -115,12 +116,12 @@ function applyStatic() {
   $('natTitle').textContent = s.national.title;
   $('natList').innerHTML = [15, 10, 5, 0].map((v) => `<li>${dot(DRAW_COLORS[v])}${esc(s.national[v])}</li>`).join('')
     + `<li>${dot(LATE_GREY)}${esc(s.national.late)}</li>`;
-  $('aboutBody').innerHTML = [...s.aboutBody, s.stayNote(config.stay), config.stay.source, config.stay.context, s.routingAbout,
+  $('aboutBody').innerHTML = [...s.aboutBody, s.stayNote(config.stay), config.stay.source, config.stay.context, s.routingAbout, s.searchAbout,
     s.imagingNote(config.doorToImaging), s.combinedUnavailable, s.gapNote,
     `${s.excludedLabel} ${Object.values(EX).map((v) => v.split(':')[0]).join('; ')}.`, config.model.source]
     .map((p) => `<p>${esc(p)}</p>`).join('');
-  $('placeSel').innerHTML = `<option value="">–</option>`
-    + config.places.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
+  $('placeInput').placeholder = s.searchPlaceholder;
+  $('placeList').setAttribute('aria-label', s.searchLabel);
   if (ui.marker) ui.marker.getElement().setAttribute('aria-label', s.ambulanceLabel);
 }
 
@@ -480,6 +481,104 @@ function update() {
   $('altBlock').innerHTML = optionLine(s.target.su, look.su) + (same ? '' : optionLine(s.target.ns, look.ns));
 }
 
+// ---------- place search ----------
+const search = { items: [], active: -1, ctl: null, timer: null, view: null };
+
+/** The list under the search box: example places, then search results, then a status line. */
+function renderSearch() {
+  const s = L();
+  const v = search.view;
+  const input = $('placeInput');
+  search.items = [...v.local, ...v.remote];
+  const opt = (p, i) => `<li role="option" id="placeOpt${i}" class="opt${i === search.active ? ' active' : ''}" data-i="${i}" aria-selected="${i === search.active}">`
+    + `<b>${esc(p.label)}</b>${p.sub ? `<small>${esc(p.sub)}</small>` : ''}</li>`;
+  const head = (text) => `<li role="presentation" class="opt-head">${esc(text)}</li>`;
+  const msg = { searching: s.searching, failed: s.searchOffline, none: s.searchNone }[v.state] || '';
+  const html = (v.local.length ? head(s.searchExamples) + v.local.map((p, i) => opt(p, i)).join('') : '')
+    + (v.remote.length ? head(s.searchResults) + v.remote.map((p, j) => opt(p, v.local.length + j)).join('') : '')
+    + (msg ? `<li role="presentation" class="opt-note">${esc(msg)}</li>` : '');
+  $('placeList').innerHTML = html;
+  $('placeList').hidden = !html;
+  input.setAttribute('aria-expanded', String(!!html));
+  if (search.active >= 0) input.setAttribute('aria-activedescendant', `placeOpt${search.active}`);
+  else input.removeAttribute('aria-activedescendant');
+  $('placeStatus').textContent = msg;
+  const act = document.getElementById(`placeOpt${search.active}`);
+  if (act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest' });
+}
+
+function closeSearch() {
+  $('placeList').hidden = true;
+  $('placeInput').setAttribute('aria-expanded', 'false');
+  $('placeInput').removeAttribute('aria-activedescendant');
+}
+
+/** Example places at once; online results after a short pause in typing (an older search is cancelled). */
+function onSearchInput() {
+  const q = $('placeInput').value;
+  clearTimeout(search.timer);
+  if (search.ctl) search.ctl.abort();
+  const online = q.trim().length >= config.search.minChars;
+  search.active = -1;
+  search.view = { local: matchPresets(q, config.places), remote: [], state: online ? 'searching' : 'idle' };
+  renderSearch();
+  if (!online) return;
+  search.timer = setTimeout(async () => {
+    const ctl = new AbortController();
+    search.ctl = ctl;
+    try {
+      const r = await searchPlaces(q, { fetchFn: fetch, lang: ui.lang, places: config.places, cfg: config.search, signal: ctl.signal });
+      if (search.ctl !== ctl) return;
+      search.view = { local: r.local, remote: r.remote, state: r.failed ? 'failed' : r.local.length + r.remote.length ? 'idle' : 'none' };
+      renderSearch();
+    } catch (e) { /* cancelled by a newer search */ }
+  }, config.search.debounceMs);
+}
+
+function choosePlace(i) {
+  const p = search.items[i];
+  if (!p) return;
+  clearTimeout(search.timer);
+  if (search.ctl) search.ctl.abort();
+  search.ctl = null;
+  const input = $('placeInput');
+  input.value = p.label;
+  closeSearch();
+  if (input.blur) input.blur(); // presenter keys work again
+  if (ui.moveTo) ui.moveTo(p.lon, p.lat, true);
+}
+
+function bindSearch() {
+  const input = $('placeInput');
+  input.addEventListener('focus', () => {
+    if (isPhone()) snapTo(2); // room for the list on phones
+    onSearchInput();
+  });
+  input.addEventListener('input', onSearchInput);
+  input.addEventListener('blur', () => setTimeout(closeSearch, 150));
+  input.addEventListener('keydown', (e) => {
+    const n = search.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!n) return;
+      search.active = e.key === 'ArrowDown' ? Math.min(search.active + 1, n - 1) : Math.max(search.active - 1, 0);
+      renderSearch();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (n) choosePlace(search.active >= 0 ? search.active : 0);
+    } else if (e.key === 'Escape') {
+      if ($('placeList').hidden) input.value = '';
+      closeSearch();
+    }
+  });
+  // mousedown, not click: it comes before the box loses focus
+  $('placeList').addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const li = e.target.closest && e.target.closest('[data-i]');
+    if (li) choosePlace(Number(li.dataset.i));
+  });
+}
+
 // ---------- the race ----------
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -542,7 +641,7 @@ function startRace() {
   stopRace();
   const sched = raceSchedule(inp.args);
   const seg = clockSegments(sched);
-  const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watch: null, suMin: null };
+  const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watches: doorWatches(sched).map((w) => ({ ...w, chip: null })) };
   ui.race = r;
   setLinks([]);
   ui.resultMarker.remove();
@@ -593,7 +692,7 @@ function raceFrame() {
   const r = ui.race;
   if (!r) return;
   const sec = Math.min(r.total, (performance.now() - r.t0) / 1000);
-  drawRace(minuteAt(r.seg, sec));
+  drawRace(sec >= r.total ? r.sched.end : minuteAt(r.seg, sec)); // the last frame exactly at the end (no rounding short of it)
   if (sec >= r.total) {
     r.done = true;
     setPlay();
@@ -622,7 +721,13 @@ function drawRace(min) {
       raceEvent(lane, e, at(lane, e.min));
     }
   }
-  if (r.watch) r.watch.getElement().textContent = s.stopwatch(Math.max(0, Math.floor(min - r.suMin)));
+  // door-to-image clocks: the chip fills while the scan is awaited
+  r.watches.filter((w) => w.chip).forEach((w) => {
+    const el = w.chip.getElement();
+    el.textContent = doorChip(min, w, s);
+    el.classList.toggle('dti', min < w.scan);
+    el.style.setProperty('--p', `${Math.round(100 * Math.max(0, Math.min(1, (min - w.arrive) / (w.scan - w.arrive || 1))))}%`);
+  });
   setRaceTrails(min);
   updateLanes(min);
   $('clockMain').textContent = min < -0.5 ? s.clockBefore(Math.ceil(-min)) : min < 0.5 ? s.clockDepart : s.clockAt(Math.floor(min));
@@ -643,6 +748,7 @@ function raceEvent(lane, e, pos) {
     ui.resultMarker.setLngLat(pos).addTo(ui.map);
     const ring = red.querySelector('.ring');
     if (ring) ring.remove();
+    red.classList.add('flash'); // one burst when the result arrives
     if (mode === 'below') red.classList.add('faded');
     if (late) red.classList.add('still');
     if (mode === 'turn') {
@@ -655,12 +761,10 @@ function raceEvent(lane, e, pos) {
     const row = e.key === 'bp' ? 0 : 26;
     if (lane === 'with') chip(text, 'treat', pos, 'right', [-16, row]);
     else chip(text, 'treat grey', pos, 'left', [18, row]);
-  } else if (lane === 'without' && e.key === 'su') {
-    r.suMin = e.min;
-    r.watch = chip(s.stopwatch(0), 'clock', pos, 'top', [0, 18]);
-  } else if (lane === 'without' && e.key === 'transferLeaves' && r.watch) {
-    r.watch.getElement().textContent = s.transferLeaves;
-    r.watch = null;
+  } else {
+    // arrival at a hospital: its door-to-image clock starts
+    const w = r.watches.find((x) => x.lane === lane && x.arrive === e.min && (e.key === 'su' || e.key === 'ns'));
+    if (w && !w.chip) w.chip = chip(doorChip(e.min, w, s), 'clock dti', pos, 'top', [0, 18]);
   }
 }
 
@@ -678,6 +782,10 @@ function buildLanes() {
     const su = ln.events.find((e) => e.key === 'su');
     const leaves = ln.events.find((e) => e.key === 'transferLeaves');
     if (su) segs.push({ a: su.min, b: leaves ? leaves.min : sched.end, cls: 'wait' });
+    // door to image: from arrival at the first hospital to the scan
+    const door = su || ln.events.find((e) => e.key === 'ns');
+    const scanEv = ln.events.find((e) => e.key === 'scan');
+    if (door && scanEv) segs.push({ a: door.min, b: scanEv.min, cls: 'dti' });
     if (key === 'with') segs.push({ a: sched.start, b: ln.events.find((e) => e.key === 'result').min, cls: 'test' });
     const marks = ln.events.filter((e) => ['bp', 'reversal', 'ns'].includes(e.key))
       .map((e) => `<i class="mark${key === 'without' ? ' grey' : ''}" data-min="${e.min}" style="left:${pct(e.min)}"></i>`);
@@ -703,35 +811,32 @@ function showSummary() {
   const r = ui.race;
   const s = L();
   const { mode } = r.inp.args;
-  const sum = summaryRows(r.sched);
-  const matchKeys = sum.diffs.map((d) => d.key);
-  const seq = (key) => {
-    const items = [
-      ...sum[key].map((m) => ({ min: m.min, order: 0, html: `<li class="ms${matchKeys.includes(m.key) ? ' match' : ''}"><b>${m.min < 0 ? `−${-m.min}` : m.min}</b> ${esc(s.milestone[m.key])}</li>`, key: m.key })),
-      ...sum.treatments[key].map((t) => ({ min: t.min, order: 1, html: `<li class="treat${matchKeys.includes(t.key) ? ' match' : ''}">${esc(s.milestone[t.key])}${t.afterScan ? ` · ${esc(s.chipAfterScan)}` : ''}</li>` })),
-    ].sort((a, b) => a.min - b.min || a.order - b.order);
-    const out = [];
-    // each interval label goes just before the time point it leads to (after any marks at its start)
-    items.forEach((it) => {
-      const g = it.key && sum.gaps[key].find((x) => x.to === it.key);
-      if (g) out.push(`<li class="gap">${esc(s.gap[g.kind](g.min))}</li>`);
-      out.push(it.html);
-    });
-    return `<div class="sum-lane ${key}"><span class="lane-name">${esc(key === 'with' ? s.laneWith : s.laneWithout)}</span><ol class="sum-seq">${out.join('')}</ol></div>`;
+  const rows = summaryTable(r.sched);
+  const fmt = (m) => `${m < 0 ? `−${-m}` : m} min`;
+  const WHERE = { ambulance: s.inAmbulance, beforeScan: s.beforeScan, afterScan: s.chipAfterScan };
+  const cell = (c) => {
+    if (!c) return '<td class="none">—</td>';
+    const gap = c.gap ? s.gap[c.gap.kind](c.gap.min) : '';
+    const note = c.place ? [s.milestone[c.place], gap].filter(Boolean).join(' · ') : c.where ? WHERE[c.where] : gap;
+    return `<td><b>${fmt(c.min)}</b>${note ? `<small>${esc(note)}</small>` : ''}</td>`;
   };
-  const lines = [];
-  const d = Object.fromEntries(sum.diffs.map((x) => [x.key, x.min]));
-  if (d.bp != null) lines.push(s.endBp(diffText(d.bp, s)));
-  if (d.ns != null) lines.push(s.endNs(diffText(d.ns, s)));
+  const diffCell = (d) => (d == null ? '<td></td>' : `<td class="diff${d > 0 ? ' good' : d < 0 ? ' bad' : ''}">${esc(diffText(d, s))}</td>`);
+  const head = `<tr><th></th><th class="with"><span class="lane-name">${esc(s.laneWith)}</span></th>`
+    + `<th><span class="lane-name">${esc(s.laneWithout)}</span></th><th>${esc(s.colDiff)}</th></tr>`;
+  // the timeline first, then (after a rule) the compared rows
+  const firstCompared = rows.find((row) => COMPARED.includes(row.key));
+  const body = rows.map((row) => `<tr class="${COMPARED.includes(row.key) ? 'key' : ''}${row === firstCompared ? ' sep' : ''}"><th scope="row">${esc(s.row[row.key])}</th>`
+    + `${cell(row.with)}${cell(row.without)}${diffCell(row.diff)}</tr>`).join('');
   const note = s.endNote({ scan: r.inp.args.scan, stay: r.inp.args.stay, transfer: r.sched.without.events.some((e) => e.key === 'transferLeaves') });
-  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.summaryTitle)}</p>${seq('with')}${seq('without')}`
-    + (lines.length ? `<p class="sum-diffs">${lines.map((l) => `<span>${esc(l)}</span>`).join('')}</p>` : '')
+  $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle)}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
     + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>`);
   $('raceLanes').classList.add('summary');
   document.body.classList.add('race-summary');
   $('raceClock').hidden = true;
-  // the badge carries the one headline; the summary has the details (on phones the summary replaces the badge)
-  const headline = mode === 'turn' && d.ns != null ? s.endNs(diffText(d.ns, s)) : lines[0];
+  // the badge carries the one headline; the table has the details (on phones the table replaces the badge)
+  const d = (key) => rows.find((row) => row.key === key)?.diff;
+  const headline = d('ns') != null && (mode === 'turn' || d('bp') == null) ? s.endNs(diffText(d('ns'), s))
+    : d('bp') != null ? s.endBp(diffText(d('bp'), s)) : null;
   if (mode === 'below') setBadge(s.badgeBelow, s.badgeBelowSub);
   else setBadge(headline || s.badgeSame, '');
   const lanes = $('raceLanes');
@@ -792,10 +897,7 @@ function bind() {
     buildSegment('drawSeg', 'draw', config.draws, (v) => L().draws[v], state.s);
     update();
   });
-  $('placeSel').addEventListener('change', (e) => {
-    const p = config.places[Number(e.target.value)];
-    if (p && ui.moveTo) ui.moveTo(p.lon, p.lat, true);
-  });
+  bindSearch();
   bindSheet();
 }
 

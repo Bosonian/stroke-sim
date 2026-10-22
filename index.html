@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
   <main class="app">
@@ -53,6 +53,15 @@
         <button class="link" id="langBtn" data-t="language">Deutsch</button>
       </header>
 
+      <p class="place-hint" id="placeHint" data-t="placeHint">Click or tap anywhere on the map, or type a place or address, to place the ambulance at a patient with suspected stroke. Drag it to move.</p>
+
+      <div class="place-search" id="placeSearch">
+        <label class="visually-hidden" for="placeInput" data-t="searchLabel">Place or address</label>
+        <input id="placeInput" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="placeList" autocomplete="off" spellcheck="false" enterkeyhint="search">
+        <ul class="place-list" id="placeList" role="listbox" aria-label="Places" hidden></ul>
+        <p class="visually-hidden" id="placeStatus" aria-live="polite"></p>
+      </div>
+
       <fieldset class="segmented draws" id="drawSeg">
         <legend data-t="drawLabel">Blood drawn</legend>
       </fieldset>
@@ -76,9 +85,6 @@
         <fieldset class="segmented" id="speedSeg">
           <legend data-t="speedLabel">Driving speed</legend>
         </fieldset>
-        <label class="inline place"><span data-t="jumpTo">Jump to a place</span>
-          <select id="placeSel"></select>
-        </label>
         <div class="alt" id="altBlock"></div>
         <p class="fp" id="fpLine"></p>
         <p class="fp" id="stayLine"></p>
@@ -101,6 +107,6 @@
   </main>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script type="module" src="js/app.js?v=12"></script>
+  <script type="module" src="js/app.js?v=13"></script>
 </body>
 </html>

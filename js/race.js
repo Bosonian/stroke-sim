@@ -31,7 +31,7 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   if (mode === 'turn') {
     arrive = r === 0 ? nsDirect * k : r + pNs * k;
     wi.legs = r === 0 ? [{ from: 0, to: arrive, route: 'branch' }] : [{ from: 0, to: r, route: 'su' }, { from: r, to: arrive, route: 'branch' }];
-    wi.events.push({ key: 'ns', min: arrive });
+    wi.events.push({ key: 'ns', min: arrive }, { key: 'scan', min: arrive + scan }); // imaging still happens, at neurosurgery
   } else {
     arrive = su;
     wi.legs = wo.legs.map((l) => ({ ...l }));
@@ -39,10 +39,7 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   }
   treats.forEach((key) => {
     if (PREHOSPITAL[tier].includes(key) && r < arrive + scan) wi.events.push({ key, min: r });
-    else {
-      if (mode === 'turn' && !wi.events.some((e) => e.key === 'scan')) wi.events.push({ key: 'scan', min: arrive + scan });
-      wi.events.push({ key, min: arrive + scan, afterScan: true });
-    }
+    else wi.events.push({ key, min: arrive + scan, afterScan: true });
   });
 
   const at = (lane, key) => lane.events.find((e) => e.key === key)?.min;
@@ -146,6 +143,69 @@ export function summaryRows(sched) {
   const diffs = [['bp', tw, two], ['ns', w, wo]].filter(([key, a, b]) => at(a, key) != null && at(b, key) != null)
     .map(([key, a, b]) => ({ key, min: at(b, key) - at(a, key) }));
   return { with: w, without: wo, gaps: { with: gaps(w), without: gaps(wo) }, treatments: { with: tw, without: two }, diffs };
+}
+
+const TIMELINE = ['drawn', 'result', 'first', 'scan', 'transferLeaves'];
+export const COMPARED = ['ns', 'bp', 'reversal'];
+
+/** End table. First the timeline (blood draw, result, first hospital, scan, transfer), in time order in both
+ *  lanes; then the compared rows (arrival at neurosurgery, treatment starts) with the difference. Each cell has
+ *  the lane's minute and the interval that led to it; the first hospital says which one; a treatment says
+ *  where it starts (in the ambulance, at the hospital before the scan, or after the scan). */
+export function summaryTable(sched) {
+  const sum = summaryRows(sched);
+  const ms = (lane, key) => sum[lane].find((x) => x.key === key);
+  const gapTo = (lane, key) => {
+    const g = sum.gaps[lane].find((x) => x.to === key);
+    return g ? { kind: g.kind, min: g.min } : null;
+  };
+  const firstOf = (lane) => (ms(lane, 'su') ? 'su' : ms(lane, 'ns') ? 'ns' : null);
+  const cell = (lane, key) => {
+    if (key === 'first') {
+      const p = firstOf(lane);
+      return p ? { min: ms(lane, p).min, place: p, gap: gapTo(lane, p) } : null;
+    }
+    const m = ms(lane, key);
+    // arrival at neurosurgery repeats the first-hospital row after a turn; its drive is shown there
+    if (m) return { min: m.min, gap: key === 'ns' && firstOf(lane) === 'ns' ? null : gapTo(lane, key) };
+    const t = sum.treatments[lane].find((x) => x.key === key);
+    if (!t) return null;
+    const arrive = firstOf(lane) ? ms(lane, firstOf(lane)).min : Infinity;
+    return { min: t.min, where: t.afterScan || lane === 'without' ? 'afterScan' : t.min <= arrive ? 'ambulance' : 'beforeScan' };
+  };
+  const rows = [...TIMELINE, ...COMPARED].map((key) => {
+    const w = cell('with', key), wo = cell('without', key);
+    return { key, with: w, without: wo, diff: w && wo && COMPARED.includes(key) ? wo.min - w.min : null };
+  }).filter((row) => row.with || row.without);
+  // a result after arrival (too late to change the destination) is listed after the arrival
+  const iRes = rows.findIndex((x) => x.key === 'result'), iFirst = rows.findIndex((x) => x.key === 'first');
+  if (iRes >= 0 && iFirst === iRes + 1 && rows[iFirst].with && rows[iRes].with.min > rows[iFirst].with.min) {
+    [rows[iRes], rows[iFirst]] = [rows[iFirst], rows[iRes]];
+  }
+  return rows;
+}
+
+/** Door-to-image clocks: one per hospital a dot reaches, [{ lane, arrive, scan, leaves }] (leaves: the transfer, or null).
+ *  The grey dot's at the stroke unit; the red dot's only after a turn (otherwise both dots share the stroke unit). */
+export function doorWatches(sched) {
+  const at = (lane, key) => sched[lane].events.find((e) => e.key === key)?.min;
+  const out = [];
+  if (at('without', 'su') != null) {
+    out.push({ lane: 'without', arrive: at('without', 'su'), scan: at('without', 'scan'), leaves: at('without', 'transferLeaves') ?? null });
+  }
+  if (at('with', 'su') == null && at('with', 'ns') != null && at('with', 'scan') != null) {
+    out.push({ lane: 'with', arrive: at('with', 'ns'), scan: at('with', 'scan'), leaves: null });
+  }
+  return out;
+}
+
+/** Text of a door-to-image chip at minute `min`: running until the scan, then (stroke unit before a transfer)
+ *  the time there until the transfer leaves. */
+export function doorChip(min, { arrive, scan, leaves }, L) {
+  const m = Math.max(0, Math.floor(min - arrive));
+  if (min < scan) return L.doorToImage(m, Math.round(scan - arrive));
+  if (leaves == null) return L.scanDone;
+  return min < leaves ? `${L.scanDone} · ${L.stopwatch(m)}` : L.transferLeaves;
 }
 
 /** "N min sooner" / "N min later" / "same time" (whole minutes). */
