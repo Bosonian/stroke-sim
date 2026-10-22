@@ -67,6 +67,7 @@
       </fieldset>
 
       <button class="btn primary play" id="playBtn" type="button" data-t="play">Play the race</button>
+      <button class="btn new-sim" id="newSimBtn" type="button" data-t="newSim">New simulation</button>
 
       <section class="decision" id="decision" aria-live="polite">
         <p class="tier" id="tierLine"></p>
@@ -98,6 +99,28 @@
         <button class="link" id="aboutBtn" data-t="about">About and sources</button>
       </footer>
     </aside>
+
+    <dialog id="startDlg" class="start" aria-labelledby="startTitle">
+      <header class="start-head">
+        <h2 id="startTitle" data-t="startTitle">New simulation</h2>
+        <button class="link" id="startLangBtn" type="button" data-t="language">Deutsch</button>
+      </header>
+      <p class="start-scene" data-t="startScene"></p>
+      <section class="start-step">
+        <h3><span class="step-n">1</span><span data-t="startPlaceQ">Where is the patient?</span></h3>
+        <div id="startPlace"></div>
+      </section>
+      <fieldset class="start-step start-tiers" id="startTier">
+        <legend><span class="step-n">2</span><span data-t="startTierQ">What probability of a bleed does the test show?</span></legend>
+        <div class="tier-cards" id="startTierCards"></div>
+        <p class="start-note" data-t="startTierNote"></p>
+      </fieldset>
+      <fieldset class="start-step segmented draws" id="startDraw">
+        <legend><span class="step-n">3</span><span data-t="startDrawQ">When does the crew draw blood for the test?</span></legend>
+      </fieldset>
+      <p class="start-status" id="startStatus" aria-live="polite"></p>
+      <button class="btn primary play" id="startGoBtn" type="button" data-t="startGo">Start simulation</button>
+    </dialog>
 
     <dialog id="aboutDlg" class="about">
       <h2 data-t="about">About and sources</h2>

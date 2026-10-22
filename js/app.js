@@ -6,12 +6,13 @@ import { strings } from './i18n.js?v=16';
 import { loadGrid } from './grid.js?v=16';
 import { hospitalFeatures, siteKind } from './hospitals.js?v=16';
 import { range } from './decide.js?v=16';
-import { fetchLive, fetchRoute, mainRoad, routeLabel } from './route.js?v=16';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story } from './story.js?v=16';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=16';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=16';
 import { matchPresets, searchPlaces } from './search.js?v=16';
 import { raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=16';
 import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=16';
 import { ROAD_COLORS, styleRoads } from './roads.js?v=16';
+import { START_TIERS, canStart, startDecision } from './start.js?v=16';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -58,6 +59,7 @@ let liveTimer = null;
 /** Ask for road routes once the ambulance has stopped moving; the grid answers meanwhile. */
 function scheduleLive() {
   clearTimeout(liveTimer);
+  ui.livePending = true;
   liveTimer = setTimeout(async () => {
     const key = posKey();
     let data = liveCache.get(key);
@@ -71,6 +73,7 @@ function scheduleLive() {
     }
     if (key !== posKey()) return; // moved on meanwhile
     ui.live = data ? { key, data } : null;
+    ui.livePending = false;
     if (!ui.race) update(); // never interrupt a race; the next change redraws from the cache
   }, config.routing.debounceMs);
 }
@@ -124,6 +127,7 @@ function applyStatic() {
     `${s.excludedLabel} ${Object.values(EX).map((v) => v.split(':')[0]).join('; ')}.`, config.model.source]
     .map((p) => `<p>${esc(p)}</p>`).join('');
   $('placeInput').placeholder = s.searchPlaceholder;
+  if (ui.startSel) buildStart();
   $('placeList').setAttribute('aria-label', s.searchLabel);
   if (ui.marker) ui.marker.getElement().setAttribute('aria-label', s.ambulanceLabel);
 }
@@ -441,7 +445,7 @@ function update() {
   let branchState = null; // the same for the race: undefined while loading, null if missing
   const inTime = leadTime(state.s, look.su.t * state.k, config.A) >= 0;
   if (live && !same && resultMin === 0) {
-    if (live.ns.geom) branch = { sec: live.ns.sec, m: live.ns.m, geom: [origin, ...live.ns.geom], segDur: live.ns.segDur ? [0, ...live.ns.segDur] : null, steps: live.ns.steps };
+    if (live.ns.geom) branch = { sec: live.ns.sec, m: live.ns.m, geom: [origin, ...live.ns.geom], segDur: live.ns.segDur ? [0, ...live.ns.segDur] : null };
     branchState = branch;
   } else if (live && !same && resultMin > 0 && inTime) {
     // also when the result arrives exactly at the door (L = 0): the re-route then starts there
@@ -455,19 +459,24 @@ function update() {
   });
 
   // map lines
-  const via = (steps, fromSec = 0) => { const r = mainRoad(steps, fromSec); return r ? L().via(r) : ''; };
-  const suLabel = live && live.su.geom ? routeLabel(live.su.sec, live.su.m, state.k, via(live.su.steps)) : '';
-  // after a result on the way, the stretch still to drive to the stroke unit carries its own time and distance
-  const rest = live && live.su.geom ? remainder(suCoords, suSeg, live.su.sec, live.su.m, (resultMin * 60) / state.k) : null;
-  const restLabel = rest && rest.m > 0 ? routeLabel(rest.sec, rest.m, state.k, via(live.su.steps, (resultMin * 60) / state.k)) : '';
+  // one label per route, for the whole route: to the stroke unit, the transfer, and (with the test) to neurosurgery
+  const P = L().pill;
+  const suLabel = live && live.su.geom ? routeLabel(live.su.sec, live.su.m, state.k, same ? P.ns : P.su) : '';
   const transfer = !same ? line('via', live && live.suNs ? [ll(su), ...live.suNs.geom] : [ll(su), ll(ns)],
-    live && live.suNs ? routeLabel(live.suNs.sec, live.suNs.m, state.k, via(live.suNs.steps)) : '') : null;
+    live && live.suNs ? routeLabel(live.suNs.sec, live.suNs.m, state.k, P.transfer) : '') : null;
+  let nsLabel = '';
+  if (branch) {
+    const resultSec = (resultMin * 60) / state.k;
+    const rest = live.su.geom ? remainder(suCoords, suSeg, live.su.sec, live.su.m, resultSec) : { m: live.su.m };
+    const all = withTestRoute(live.su, rest, branch, resultSec);
+    nsLabel = routeLabel(all.sec, all.m, state.k, P.ns);
+  }
   const feats = [];
   if (st.mode === 'turn') {
     if (split.before.length > 1) feats.push(line('drive', split.before));
-    feats.push(line('via', split.after, restLabel));
+    feats.push(line('via', split.after, suLabel));
     if (transfer) feats.push(transfer);
-    feats.push(line('direct', branch ? branch.geom : [split.point, ll(ns)], branch ? routeLabel(branch.sec, branch.m, state.k, via(branch.steps)) : ''));
+    feats.push(line('direct', branch ? branch.geom : [split.point, ll(ns)], nsLabel));
   } else {
     feats.push(line('drive', suCoords, suLabel));
     if (st.mode === 'late' && transfer) feats.push(transfer);
@@ -575,14 +584,15 @@ function choosePlace(i) {
   input.value = p.label;
   closeSearch();
   if (input.blur) input.blur(); // presenter keys work again
-  if (isPhone()) snapTo(1); // show the map again
+  if (isPhone() && !$('startDlg').open) snapTo(1); // show the map again
   if (ui.moveTo) ui.moveTo(p.lon, p.lat, true);
+  if ($('startDlg').open) { ui.startSel.placed = true; refreshStart(); }
 }
 
 function bindSearch() {
   const input = $('placeInput');
   input.addEventListener('focus', () => {
-    if (isPhone()) snapTo(2); // room for the list on phones
+    if (isPhone() && !$('startDlg').open) snapTo(2); // room for the list on phones
     onSearchInput();
   });
   input.addEventListener('input', onSearchInput);
@@ -634,6 +644,7 @@ function prepareRace({ live, look, st, su, ns, same, origin, suCoords, suSeg, br
     };
   }
   setPlay(blocker);
+  if (ui.startPending) checkStart(blocker);
 }
 
 /** Play / Skip / Replay label; with a blocker (or null) also whether the race can run. */
@@ -916,7 +927,7 @@ function bind() {
   document.addEventListener('keydown', (e) => {
     const tag = e.target && e.target.tagName;
     if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'SUMMARY', 'A'].includes(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
-    if ($('aboutDlg').open) return;
+    if ($('aboutDlg').open || $('startDlg').open) return;
     if (e.key === ' ') {
       e.preventDefault();
       if (!$('playBtn').disabled) $('playBtn').click();
@@ -930,6 +941,76 @@ function bind() {
   });
   bindSearch();
   bindSheet();
+  bindStart();
+}
+
+// ---------- the start box ----------
+/** Tier cards and blood-draw times in the box, in the current language, keeping the choices made. */
+function buildStart() {
+  const s = L();
+  const sel = ui.startSel;
+  const color = { t71: 'var(--tier-71)', t81: 'var(--tier-81)', t91: 'var(--tier-91)' };
+  $('startTierCards').innerHTML = START_TIERS.map((t) => `<label class="tier-card" style="--c:${color[t]}">`
+    + `<input type="radio" name="startTier" value="${t}"${sel.tier === t ? ' checked' : ''}>`
+    + `<b>${esc(s.results[t])}</b><small>${esc(s.startTiers[t])}</small></label>`).join('');
+  buildSegment('startDraw', 'startDraw', config.draws, (v) => s.draws[v], sel.draw);
+  refreshStart();
+}
+
+function refreshStart(status) {
+  const ready = canStart(ui.startSel, config.draws);
+  $('startGoBtn').disabled = !ready || !!ui.startPending;
+  $('startStatus').textContent = status !== undefined ? status : ready ? '' : L().startMissing;
+}
+
+function openStart() {
+  if ($('startDlg').open) return;
+  $('startPlace').appendChild($('placeSearch')); // the same search box, lent to the start box
+  buildStart();
+  $('startDlg').showModal();
+}
+
+function closeStart() {
+  $('drawSeg').parentNode.insertBefore($('placeSearch'), $('drawSeg'));
+  closeSearch();
+  $('startDlg').close();
+}
+
+/** Start: take the choices, then wait for the road routes; the race begins when they are there. */
+function onStart() {
+  const sel = ui.startSel;
+  if (!canStart(sel, config.draws)) return;
+  state.result = sel.tier;
+  state.s = sel.draw;
+  buildSegment('drawSeg', 'draw', config.draws, (v) => L().draws[v], state.s);
+  buildSegment('resultSeg', 'result', config.results, (v) => L().results[v], state.result);
+  stopRace();
+  ui.startPending = true;
+  refreshStart(L().startWaiting);
+  update();
+}
+
+function checkStart(blocker) {
+  const d = startDecision({ livePending: !!ui.livePending, blocker });
+  if (d === 'wait') return;
+  ui.startPending = false;
+  if (d === 'blocked') return refreshStart(L().playBlocked[blocker]);
+  closeStart();
+  setTimeout(startRace, 0); // after this redraw
+}
+
+function bindStart() {
+  ui.startSel = { placed: false, tier: null, draw: null };
+  $('startTier').addEventListener('change', (e) => { ui.startSel.tier = e.target.value; refreshStart(); });
+  $('startDraw').addEventListener('change', (e) => { ui.startSel.draw = Number(e.target.value); refreshStart(); });
+  $('startGoBtn').addEventListener('click', onStart);
+  $('startLangBtn').addEventListener('click', () => $('langBtn').click());
+  $('startDlg').addEventListener('cancel', (e) => e.preventDefault()); // the map opens with Start only
+  $('newSimBtn').addEventListener('click', () => {
+    stopRace();
+    update();
+    openStart();
+  });
 }
 
 // Phone bottom sheet: drag the handle up or down; it snaps to small, half or full height. A tap toggles half/full.
@@ -1011,6 +1092,7 @@ async function main() {
   }
   update();
   scheduleLive();
+  openStart(); // the map opens with Start
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* app works without offline cache */ });
   }

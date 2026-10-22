@@ -69,6 +69,12 @@ export function remainder(coords, segDur, totalSec, meters, targetSec) {
   return { sec: Math.max(0, totalSec - Math.max(0, targetSec)), m: all > 0 ? Math.round((meters * pathLen(after)) / all) : 0 };
 }
 
+/** The with-test route as one: the stretch to the stroke unit driven until the result (`resultSec`, k = 1), then the
+ *  re-route to neurosurgery. su, branch: { sec, m }; rest: what is left of the stroke-unit route after the result. */
+export function withTestRoute(su, rest, branch, resultSec) {
+  return { sec: Math.min(Math.max(0, resultSec), su.sec) + branch.sec, m: su.m - rest.m + branch.m };
+}
+
 /** Point half way along a line by length, where its "min · km" label goes. */
 export function midpoint(coords) {
   return splitRoute(coords, null, 0.5, 1).point;

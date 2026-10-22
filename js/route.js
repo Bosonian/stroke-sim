@@ -34,31 +34,11 @@ export function pickFastest(durRow, distRow, idxs) {
   return best && { idx: best.idx, t: best.sec / 60, km: Math.round(best.m / 100) / 10 };
 }
 
-/** "7 min · 4.2 km": minutes scaled by the speed factor k (at least 1), km as driven; `road` ("via B 11") appended. */
-export function routeLabel(sec, meters, k, road = '') {
+/** "Stroke unit: 7 min · 4.2 km": the whole route's minutes, scaled by the speed factor k (at least 1), and km as driven. */
+export function routeLabel(sec, meters, k, name = '') {
   const min = Math.max(1, Math.round((sec / 60) * k));
   const kmv = Math.round(meters / 100) / 10;
-  return `${min} min · ${kmv < 10 ? kmv.toFixed(1) : Math.round(kmv)} km${road ? ` · ${road}` : ''}`;
-}
-
-/** Road number ("A 3", "B 11") driven longest on a route from second `fromSec` (k = 1) on; '' when none carries
- *  at least a fifth of the distance left. steps: [{ sec, m, ref }]. */
-export function mainRoad(steps, fromSec = 0) {
-  const by = new Map();
-  let all = 0;
-  let t = 0;
-  for (const s of steps || []) {
-    const t0 = t;
-    t += s.sec;
-    const part = s.sec > 0 ? Math.min(1, Math.max(0, (t - Math.max(t0, fromSec)) / s.sec)) : t0 >= fromSec ? 1 : 0;
-    const m = s.m * part;
-    all += m;
-    const ref = (s.ref || '').split(';')[0].trim();
-    if (ref && m > 0) by.set(ref, (by.get(ref) || 0) + m);
-  }
-  let best = '';
-  for (const [ref, m] of by) if (!best || m > by.get(best)) best = ref;
-  return best && by.get(best) >= all / 5 ? best : '';
+  return `${name ? `${name}: ` : ''}${min} min · ${kmv < 10 ? kmv.toFixed(1) : Math.round(kmv)} km`;
 }
 
 async function getJson(fetchFn, url, timeoutMs) {
@@ -80,13 +60,11 @@ async function getJson(fetchFn, url, timeoutMs) {
 async function getRoute(fetchFn, url, a, b, timeoutMs, heading = null) {
   const pt = (c) => `${c[0].toFixed(6)},${c[1].toFixed(6)}`;
   const dir = typeof heading === 'number' ? `&bearings=${Math.round(heading) % 360},30;&radiuses=25;unlimited` : '';
-  const j = await getJson(fetchFn, `${url}/route/v1/driving/${pt(a)};${pt(b)}?overview=full&geometries=geojson&annotations=duration&steps=true${dir}`, timeoutMs);
+  const j = await getJson(fetchFn, `${url}/route/v1/driving/${pt(a)};${pt(b)}?overview=full&geometries=geojson&annotations=duration${dir}`, timeoutMs);
   if (!j) return null;
   const r = j.routes[0];
-  const leg = r.legs && r.legs[0];
-  const seg = leg && leg.annotation ? leg.annotation.duration : null;
-  const steps = leg && leg.steps ? leg.steps.map((s) => ({ sec: s.duration, m: s.distance, ref: s.ref || '' })) : null;
-  return { sec: r.duration, m: r.distance, geom: r.geometry.coordinates, segDur: seg, steps };
+  const seg = r.legs && r.legs[0] && r.legs[0].annotation ? r.legs[0].annotation.duration : null;
+  return { sec: r.duration, m: r.distance, geom: r.geometry.coordinates, segDur: seg };
 }
 
 /** Road route between two points (e.g. result point -> neurosurgery, in the ambulance's heading), or null. */
@@ -118,7 +96,7 @@ export async function fetchLive(lon, lat, hospitals, gridLook, cfg, fetchFn = fe
     const bestNs = pickFastest([dur[0], ...dur.slice(1 + su.length)], [dist[0], ...dist.slice(1 + su.length)], ns);
     if (!bestSu || !bestNs) return null;
     // shown minutes and km come from the drawn route, so card and map label agree; ranking used the table
-    const withRoute = (b, r) => r && { ...b, t: r.sec / 60, km: Math.round(r.m / 100) / 10, sec: r.sec, m: r.m, geom: r.geom, segDur: r.segDur, steps: r.steps };
+    const withRoute = (b, r) => r && { ...b, t: r.sec / 60, km: Math.round(r.m / 100) / 10, sec: r.sec, m: r.m, geom: r.geom, segDur: r.segDur };
     const same = bestNs.idx === bestSu.idx;
     const [rSu, rNs, suNs] = await Promise.all([
       getRoute(fetchFn, url, origin, at(bestSu.idx), timeoutMs),
