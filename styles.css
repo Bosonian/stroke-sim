@@ -261,6 +261,14 @@ body.race-summary .lap-box { display: none; }
   .race-side .race-phase li { white-space: normal; }
 }
 .race-dot { border-radius: 50%; pointer-events: none; }
+/* what each dot is doing, riding with it: red above right, grey below left (apart where they share the road) */
+.dot-label {
+  position: absolute; z-index: 1; white-space: nowrap; pointer-events: none; padding: 3px 9px; border-radius: 6px;
+  font-family: var(--font-display); font-weight: 700; font-size: 15px; line-height: 1.2;
+  background: var(--console); color: #ffffff; box-shadow: 0 2px 8px rgba(19, 39, 63, 0.35);
+}
+.race-dot.red .dot-label { left: calc(100% + 10px); bottom: calc(100% + 6px); border-left: 4px solid #D7263D; }
+.race-dot.grey .dot-label { right: calc(100% + 10px); top: calc(100% + 6px); border-left: 4px solid #8E9AA8; }
 .race-dot.grey { width: 26px; height: 26px; background: #5B6B7C; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(19, 39, 63, 0.45); }
 .race-dot.red { position: relative; width: 16px; height: 16px; background: #D7263D; border: 2px solid #ffffff; box-shadow: 0 0 0 0 rgba(215, 38, 61, 0.6); animation: race-pulse 1.2s ease-out infinite; }
 .race-dot.red.still { animation: none; }
@@ -465,11 +473,14 @@ body.picking .map { cursor: crosshair; }
   }
   .race-bar .btn { flex: 1; min-height: 42px; box-shadow: 0 2px 10px rgba(19, 39, 63, 0.35); }
   .race-bar .btn:not(.primary) { background: var(--console); color: var(--on-console); }
-  body.racing .lap-box { top: auto; bottom: calc(60px + env(safe-area-inset-bottom)); height: 23vh; max-height: none; }
-  body.racing .race-clock { top: 8px; width: min(300px, calc(100% - 96px)); padding: 5px 10px; }
+  /* clock and lap timers together at the top, clear of the zoom buttons; the map below them */
+  body.racing .race-side { display: flex; flex-direction: column; gap: 6px; position: absolute; z-index: 3; top: 8px; left: 8px; right: 56px; }
+  body.racing .race-side > .race-clock, body.racing .race-side > .lap-box { position: static; transform: none; width: auto; max-width: none; min-width: 0; margin: 0; }
+  body.racing .lap-box { height: 22vh; max-height: none; }
+  body.racing .race-clock { display: flex; align-items: baseline; justify-content: center; gap: 10px; padding: 4px 10px; }
   body.racing .race-clock strong { font-size: 22px; }
-  body.racing .race-phase li { font-size: 12px; }
-  body.racing .watermark { top: auto; bottom: calc(68px + 23vh + env(safe-area-inset-bottom)); }
+  body.racing .watermark { top: auto; bottom: calc(60px + env(safe-area-inset-bottom)); }
+  .dot-label { font-size: 13px; padding: 2px 7px; }
   body.racing .watermark strong { font-size: 13px; }
   body.racing .race-lanes { top: 8px; max-height: calc(100% - 80px); }
   /* the attribution moves under the zoom buttons (the bar covers the bottom) */

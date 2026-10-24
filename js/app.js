@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=27'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=27';
-import { loadGrid } from './grid.js?v=27';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=27';
-import { range } from './decide.js?v=27';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=27';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=27';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=27';
-import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=27';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=27';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=27';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=27';
+import { config, waitMin } from '../config.js?v=28'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=28';
+import { loadGrid } from './grid.js?v=28';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=28';
+import { range } from './decide.js?v=28';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=28';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=28';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=28';
+import { dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=28';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=28';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=28';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=28';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -673,6 +673,7 @@ function dotEl(kind) {
   el.setAttribute('aria-label', kind === 'red' ? L().raceWith : L().raceWithout);
   // the test ring fills over the test's 15 minutes
   if (kind === 'red') el.innerHTML = '<svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg>';
+  el.insertAdjacentHTML('beforeend', '<span class="dot-label" aria-hidden="true" hidden></span>'); // what the dot is doing, riding with it
   return el;
 }
 
@@ -731,8 +732,8 @@ function startRace() {
 
 /** Phone race view: the free map between the clock (top) and the lap timers and bar (bottom). */
 function phoneFit() {
-  const clock = $('raceClock');
-  return { top: (clock.offsetTop || 0) + clock.offsetHeight + 14, bottom: $('lapBox').offsetHeight + $('raceBar').offsetHeight + 34 };
+  const side = $('raceSide'); // clock and lap timers at the top, the bar and the label at the bottom
+  return { top: (side.offsetTop || 0) + side.offsetHeight + 14, bottom: $('raceBar').offsetHeight + 50 };
 }
 
 function fitRace({ top, bottom, left = 60, right = 60 }, bounds = ui.race.bounds) {
@@ -791,6 +792,13 @@ function drawRace(min) {
   const at = (lane, m) => positionAt(sched[lane].legs, m, k, inp.routes);
   r.red.setLngLat(at('with', min));
   r.grey.setLngLat(at('without', min));
+  const time = (m) => wallTime(m, draw, r.clock);
+  for (const [lane, dot] of [['with', r.red], ['without', r.grey]]) {
+    const key = dotPhase(phaseAt(sched[lane], min));
+    const label = dot.getElement().querySelector('.dot-label');
+    const text = key ? s.dotPhase[key] : '';
+    if (label && label.textContent !== text) { label.textContent = text; label.hidden = !key; }
+  }
   const ring = r.red.getElement().querySelector('.ring circle');
   if (ring) ring.setAttribute('stroke-dashoffset', String(100 * (1 - Math.max(0, Math.min(1, (min + draw) / A)))));
   for (const lane of ['with', 'without']) {
@@ -804,7 +812,7 @@ function drawRace(min) {
   // door-to-image clocks: the chip fills while the scan is awaited
   r.watches.filter((w) => w.chip).forEach((w) => {
     const el = w.chip.getElement();
-    el.textContent = doorChip(min, w, s);
+    el.textContent = doorChip(min, w, s, time);
     el.classList.toggle('dti', min < w.scan);
     el.style.setProperty('--p', `${Math.round(100 * Math.max(0, Math.min(1, (min - w.arrive) / (w.scan - w.arrive || 1))))}%`);
   });
@@ -873,7 +881,7 @@ function raceEvent(lane, e, pos) {
   if (lane === 'with' && e.key === 'result') {
     const suAt = r.sched.without.events.find((x) => x.key === 'su').min;
     const late = mode === 'late';
-    ui.resultMarker.getElement().querySelector('.result-label').textContent = s.results[tier] + (late ? ` · +${Math.max(1, Math.ceil(e.min - suAt))} min` : '');
+    ui.resultMarker.getElement().querySelector('.result-label').textContent = s.resultAt(s.results[tier], wallTime(e.min, r.inp.args.s, r.clock)) + (late ? ` · +${Math.max(1, Math.ceil(e.min - suAt))} min` : '');
     ui.resultMarker.setLngLat(pos).addTo(ui.map);
     const ring = red.querySelector('.ring');
     if (ring) ring.remove();
@@ -893,7 +901,7 @@ function raceEvent(lane, e, pos) {
   } else {
     // arrival at a hospital: its door-to-image clock starts
     const w = r.watches.find((x) => x.lane === lane && x.arrive === e.min && (e.key === 'su' || e.key === 'ns'));
-    if (w && !w.chip) w.chip = chip(doorChip(e.min, w, s), 'clock dti', pos, 'top', [0, 18]);
+    if (w && !w.chip) w.chip = chip(doorChip(e.min, w, s, (m) => wallTime(m, r.inp.args.s, r.clock)), 'clock dti', pos, 'top', [0, 18]);
   }
 }
 

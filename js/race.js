@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=27';
+import { resultMinute, splitRoute } from './story.js?v=28';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -225,11 +225,19 @@ export function doorWatches(sched) {
 
 /** Text of a door-to-image chip at minute `min`: running until the scan, then (stroke unit before a transfer)
  *  the time there until the transfer leaves. */
-export function doorChip(min, { arrive, scan, leaves }, L) {
+export function doorChip(min, { arrive, scan, leaves }, L, time = null) {
   const m = Math.max(0, Math.floor(min - arrive));
+  const at = (text, t) => (time ? `${text} ${time(t)}` : text); // pinned milestones with their clock time
   if (min < scan) return L.doorToImage(m, Math.round(scan - arrive));
-  if (leaves == null) return L.scanDone;
-  return min < leaves ? `${L.organising} · ${L.stopwatch(m)}` : L.transferLeaves; // scan done, transfer being organised
+  if (leaves == null) return at(L.scanDone, scan);
+  return min < leaves ? `${L.organising} · ${L.stopwatch(m)}` : at(L.transferLeaves, leaves); // scan done, transfer being organised
+}
+
+const MOVING = ['scene', 'testScene', 'testDriving', 'resultDriving', 'toSu', 'toNs', 'transfer'];
+
+/** The label riding with a dot: its phase while on scene or on the road; null at a hospital (the chips there say it). */
+export function dotPhase(phase) {
+  return MOVING.includes(phase) ? phase : null;
 }
 
 /** "N min sooner" / "N min later" / "same time" (whole minutes). */
