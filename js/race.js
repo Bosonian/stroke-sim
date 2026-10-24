@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=28';
+import { resultMinute, splitRoute } from './story.js?v=29';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -310,4 +310,13 @@ export function centredBox(points, origin) {
   }
   if (!dx && !dy) return [origin, origin];
   return [[ox - dx, mercLat(oy - dy)], [ox + dx, mercLat(oy + dy)]];
+}
+
+/** Side for a dot's label: the preferred side ('right' | 'left') unless the label would run past the screen edge
+ *  there and fits on the other side. x: dot centre on screen, w: label width, width: map width (px). */
+export function labelSide(prefer, x, w, width, gap = 18, margin = 8) {
+  const right = x + gap + w <= width - margin;
+  const left = x - gap - w >= margin;
+  if (prefer === 'right') return right || !left ? 'right' : 'left';
+  return left || !right ? 'left' : 'right';
 }

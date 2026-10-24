@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=28'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=28';
-import { loadGrid } from './grid.js?v=28';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=28';
-import { range } from './decide.js?v=28';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=28';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=28';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=28';
-import { dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=28';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=28';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=28';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=28';
+import { config, waitMin } from '../config.js?v=29'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=29';
+import { loadGrid } from './grid.js?v=29';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=29';
+import { range } from './decide.js?v=29';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=29';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=29';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=29';
+import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=29';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=29';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=29';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=29';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -798,6 +798,11 @@ function drawRace(min) {
     const label = dot.getElement().querySelector('.dot-label');
     const text = key ? s.dotPhase[key] : '';
     if (label && label.textContent !== text) { label.textContent = text; label.hidden = !key; }
+    if (label && key) { // switch sides rather than run past the screen edge
+      const prefer = lane === 'with' ? 'right' : 'left';
+      const side = labelSide(prefer, ui.map.project(dot.getLngLat()).x, label.offsetWidth, $('map').clientWidth);
+      label.classList.toggle('flip', side !== prefer);
+    }
   }
   const ring = r.red.getElement().querySelector('.ring circle');
   if (ring) ring.setAttribute('stroke-dashoffset', String(100 * (1 - Math.max(0, Math.min(1, (min + draw) / A)))));
