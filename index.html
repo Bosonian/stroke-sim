@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="styles.css?v=36">
+  <link rel="stylesheet" href="styles.css?v=37">
 </head>
 <body>
   <main class="app">
@@ -36,8 +36,10 @@
         <span id="decisionAskSub"></span>
         <div class="ask-btns">
           <button type="button" class="ask-btn" id="askSurgery" data-outcome="surgery"></button>
+          <button type="button" class="ask-btn" id="askHelicopter" data-outcome="helicopter" hidden></button>
           <button type="button" class="ask-btn" id="askConservative" data-outcome="conservative"></button>
         </div>
+        <small class="ask-rule" id="askHeliRule" hidden></small>
       </div>
     </div>
 
@@ -187,6 +189,6 @@
   </main>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script type="module" src="js/app.js?v=36"></script>
+  <script type="module" src="js/app.js?v=37"></script>
 </body>
 </html>

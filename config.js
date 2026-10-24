@@ -43,6 +43,23 @@ export const config = {
     min: 10,
     source: "Author's assumption (24.10.2026): time for the neurosurgeons to decide whether to operate and to clarify with the relatives the patient's prior condition and will; no published source.",
   },
+  // Optional helicopter transfer (illustrative, offered at the decision; user's choices of 24.10.2026, LOG.md).
+  // The wait at the stroke unit stays the door-in-door-out time below; only the trip changes.
+  helicopter: {
+    speedKmh: 150, // straight line incl. warm-up and landing: 53 km median distance in a 21 min median flight (Hoechter 2025); author's derivation
+    groundLegMin: 3, // ambulance leg at a hospital without a certified helipad (Hoechter 2023: +2.73 min, adjusted)
+    // the sending stroke unit's state; verbatim rules in LOG.md (24.10.2026)
+    rules: {
+      Hessen: { regularKm: 75, immediateKm: 40 }, // Grundsätze ärztlich begleiteter Sekundärtransport, 6. Fortschreibung 2025, Ziff. 7.2
+      'Baden-Württemberg': { roadKm: 80 }, // Grundsätze Intensivtransporte BW, 18.12.2023, Ziff. 4.4 ('etwa 60-80 km'; upper end)
+      Bayern: { maxKm: 120 }, // StMI Verfahrensregelung arztbegleiteter Patiententransport, 08.02.2013 (RTH limit; ITH preferred)
+    },
+    cite: {
+      authors: 'Hoechter DJ, Rieder C, Kies L, et al.',
+      title: 'Retrospective analysis of characteristics and transfer times of helicopter interhospital transfer of stroke patients: balancing air and ground transport efficiency.',
+      journal: 'Scand J Trauma Resusc Emerg Med', ref: '2025;33:184', doi: '10.1186/s13049-025-01506-z',
+    },
+  },
   // Stay at the stroke unit before transfer (door-in-door-out: arrival to departure at the first hospital).
   // German figure (author, 21.10.2026), lower quartile used (docs/superpowers/specs/2026-10-21-race-design.md).
   stay: {

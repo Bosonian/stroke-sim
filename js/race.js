@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=36';
+import { resultMinute, splitRoute } from './story.js?v=37';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -10,8 +10,9 @@ const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] }
  *  mode: from story() ('turn' | 'late' | 'same' | 'below'); tSu, suNs, nsDirect, pNs: minutes at k = 1
  *  (suNs null without a transfer; pNs from the result point when r > 0; nsDirect from the start when r = 0);
  *  scan: door-to-image; stay: door-in-door-out; decide: from the first scan to the decision (surgery or conservative);
- *  outcome: 'surgery' (default) or 'conservative' (illustrative replay: no transfer, the dots stay where they are). */
-export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, scan, stay, decide = 0, outcome = 'surgery' }) {
+ *  outcome: 'surgery' (default), 'conservative' (no transfer, the dots stay where they are) or 'helicopter' (the transfer
+ *  flies: flight minutes, not scaled by k). */
+export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, scan, stay, decide = 0, outcome = 'surgery', flight = null }) {
   const r = resultMinute(s, A);
   const su = tSu * k;
   const conservative = outcome === 'conservative' && mode !== 'below';
@@ -23,10 +24,11 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   treats.forEach((key) => wo.events.push({ key, min: su + scan }));
   // surgery or conservative: decided after the first scan, on its images (sent to the neurosurgeons; no second scan after a transfer)
   if (mode !== 'below') wo.events.push({ key: 'decision', min: su + scan + decide });
+  const heli = transfer && outcome === 'helicopter' && flight != null;
   if (transfer) {
-    const ns = su + stay + suNs * k;
+    const ns = su + stay + (heli ? flight : suNs * k);
     wo.events.push({ key: 'transferLeaves', min: su + stay }, { key: 'ns', min: ns });
-    wo.legs.push({ from: su + stay, to: ns, route: 'transfer' });
+    wo.legs.push({ from: su + stay, to: ns, route: heli ? 'flight' : 'transfer' });
   }
 
   // with the test
@@ -51,7 +53,7 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   const all = [...wi.events, ...wo.events].map((e) => e.min);
   const same = mode === 'same'; // the stroke unit has neurosurgery: arriving there is arriving at neurosurgery
   if (same) wi.sameSite = wo.sameSite = true;
-  return { start: -s, end: Math.max(...all), with: wi, without: wo, diff: { ns: diff('ns'), bp: diff('bp') }, same, ...(conservative ? { conservative } : {}) };
+  return { start: -s, end: Math.max(...all), with: wi, without: wo, diff: { ns: diff('ns'), bp: diff('bp') }, same, ...(conservative ? { conservative } : {}), ...(heli ? { heli } : {}) };
 }
 
 /** What a dot is doing at minute `min`, for the live heading: 'scene' | 'testScene' | 'testDriving' | 'resultDriving' |
@@ -63,6 +65,7 @@ export function phaseAt(lane, min) {
   if (leg) {
     if (leg.route === 'branch') return 'toNs';
     if (leg.route === 'transfer') return 'transfer';
+    if (leg.route === 'flight') return 'flight';
     if (result == null) return 'toSu';
     return min < result ? 'testDriving' : 'resultDriving';
   }
@@ -168,7 +171,7 @@ export function summaryRows(sched) {
     if (su) {
       gap(dep, su, 'drive');
       gap(su, leaves, 'atSu');
-      gap(leaves, ns, 'transfer');
+      gap(leaves, ns, sched.heli ? 'flight' : 'transfer');
     } else if (ns) {
       if (res && res.min > 0) { gap(dep, res, 'drive'); gap(res, ns, 'drive'); } else gap(dep, ns, 'drive');
     }
@@ -256,13 +259,20 @@ export function outcomeSwitch(sched, outcome) {
   return sched.without.events.some((e) => e.key === 'transferLeaves') ? 'conservative' : null;
 }
 
+/** The other decisions to offer (question box, end card): none without a transfer to choose; the helicopter only
+ *  where a state rule offers it (heli). */
+export function outcomeOptions(canTransfer, heli, current) {
+  if (!canTransfer) return [];
+  return ['surgery', 'helicopter', 'conservative'].filter((o) => o !== current && (o !== 'helicopter' || heli));
+}
+
 /** Minute at which the race stops to ask for the decision: the grey dot's, where a transfer hangs on it; else null. */
 export function decisionPause(sched) {
   if (sched.conservative || outcomeSwitch(sched, 'surgery') !== 'conservative') return null;
   return sched.without.events.find((e) => e.key === 'decision')?.min ?? null;
 }
 
-const MOVING = ['scene', 'testScene', 'testDriving', 'resultDriving', 'toSu', 'toNs', 'transfer'];
+const MOVING = ['scene', 'testScene', 'testDriving', 'resultDriving', 'toSu', 'toNs', 'transfer', 'flight'];
 
 /** The label riding with a dot: its phase while on scene or on the road; null at a hospital (the chips there say it). */
 export function dotPhase(phase) {

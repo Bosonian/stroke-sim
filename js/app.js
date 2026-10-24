@@ -1,18 +1,19 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=36'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=36';
-import { loadGrid } from './grid.js?v=36';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=36';
-import { range } from './decide.js?v=36';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=36';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=36';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=36';
-import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip, outcomeSwitch, decisionPause, secondsAt } from './race.js?v=36';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=36';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=36';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=36';
+import { config, waitMin } from '../config.js?v=37'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=37';
+import { loadGrid } from './grid.js?v=37';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=37';
+import { range } from './decide.js?v=37';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=37';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=37';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=37';
+import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip, outcomeOptions, decisionPause, secondsAt } from './race.js?v=37';
+import { heliOffer, flightMinutes, kmLine } from './heli.js?v=37';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=37';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=37';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=37';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -648,6 +649,12 @@ function prepareRace({ live, look, st, su, ns, same, origin, suCoords, suSeg, br
       },
       routes, origin, su: ll(su), ns: ll(ns),
     };
+    if (routes.transfer && ui.landing) { // helicopter: only where the stroke unit's state rule offers it
+      const a = ui.landing[su.id] || {}, b = ui.landing[ns.id] || {};
+      const line = kmLine(ll(su), ll(ns)), road = live.suNs.m / 1000;
+      const offer = heliOffer({ state: a.state, kmLine: line, kmRoad: road, suLanding: a.landing, nsLanding: b.landing }, config.helicopter);
+      if (offer) ui.raceIn.heli = { ...offer, km: line, kmRoad: road, flight: flightMinutes(line, a.landing, b.landing, config.helicopter) };
+    }
   }
   setPlay(blocker);
   if (ui.startPending) checkStart(blocker);
@@ -686,12 +693,22 @@ function chip(text, cls, at, anchor, offset) {
   return m;
 }
 
+/** Race arguments for a decision: the helicopter adds its flight minutes. */
+function outcomeArgs(inp, outcome) {
+  return { ...inp.args, outcome, flight: outcome === 'helicopter' && inp.heli ? inp.heli.flight : null };
+}
+
+/** The flight as a straight line from the stroke unit to neurosurgery (minutes not scaled by the speed factor). */
+function flightRoute(r) {
+  return r.inp.routes.flight = { coords: [r.inp.su, r.inp.ns], segDur: null, sec: (r.inp.heli.flight * 60) / r.inp.args.k };
+}
+
 /** outcome: the decision chosen beforehand (end-card replay); without one the race asks after the first scan. */
 function startRace(outcome = null) {
   const inp = ui.raceIn;
   if (!inp || !ui.map) return;
   stopRace();
-  const sched = raceSchedule(outcome ? { ...inp.args, outcome } : inp.args);
+  const sched = raceSchedule(outcome ? outcomeArgs(inp, outcome) : inp.args);
   const seg = clockSegments(sched);
   const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watches: doorWatches(sched).map((w) => ({ ...w, chip: null })) };
   r.clock = { ...config.clock, startMin: minuteOfDay(new Date()) }; // the assessment starts now (each Replay too)
@@ -700,6 +717,8 @@ function startRace(outcome = null) {
   r.lapKey = '';
   r.flash = {};
   r.outcome = outcome || 'surgery';
+  r.canTransfer = (outcome ? raceSchedule(inp.args) : sched).without.events.some((e) => e.key === 'transferLeaves');
+  if (inp.heli) flightRoute(r);
   r.pauseAt = outcome ? null : decisionPause(sched);
   r.answered = false;
   ui.race = r;
@@ -761,6 +780,11 @@ function askDecision() {
   $('decisionAskSub').textContent = s.ask.sub;
   $('askSurgery').textContent = s.ask.surgery;
   $('askConservative').textContent = s.ask.conservative;
+  const heli = r.inp.heli; // the third answer only where a state rule offers the helicopter
+  $('askHelicopter').hidden = !heli;
+  $('askHelicopter').textContent = s.ask.helicopter;
+  $('askHeliRule').hidden = !heli;
+  $('askHeliRule').textContent = heli ? s.ask.heliRule[heli.basis](Math.round(heli.basis === 'road' ? heli.kmRoad : heli.km)) : '';
   box.hidden = false;
   if ($('askSurgery').focus) $('askSurgery').focus();
 }
@@ -771,9 +795,9 @@ function answerDecision(outcome) {
   if (!r || r.pauseAt == null || r.answered) return;
   r.answered = true;
   $('decisionAsk').hidden = true;
-  if (outcome === 'conservative') {
+  if (outcome !== 'surgery') {
     const old = r.watches;
-    r.sched = raceSchedule({ ...r.inp.args, outcome });
+    r.sched = raceSchedule(outcomeArgs(r.inp, outcome));
     r.seg = clockSegments(r.sched);
     r.total = totalSeconds(r.seg);
     r.laps = laps(r.sched, config.clock.assessMin);
@@ -1017,6 +1041,7 @@ function explainers(s, r) {
   const transfer = r.sched.without.events.some((e) => e.key === 'transferLeaves');
   return item(s.explain.scan, r.inp.args.scan, config.doorToImaging)
     + item(s.explain.decision, r.inp.args.decide, config.decision)
+    + (r.sched.heli ? item(s.explain.heli, config.helicopter.speedKmh, config.helicopter) : '')
     + (transfer ? item(s.explain.stay, r.inp.args.stay, config.stay) : '');
 }
 
@@ -1048,9 +1073,10 @@ function showSummary() {
   $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle(wallTime(r.sched.start - config.clock.assessMin, r.inp.args.s, r.clock)))}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
     + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>${explainers(s, r)}`);
   // the other decision as a second run: conservative cancels the transfer (illustrative; no share is shown)
-  const next = outcomeSwitch(r.sched, r.outcome);
+  const nexts = outcomeOptions(r.canTransfer, !!r.inp.heli, r.outcome);
   if (r.sched.conservative) $('raceLanes').insertAdjacentHTML('afterbegin', `<p class="sum-note conservative">${esc(s.conservativeNote[mode === 'turn' ? 'turn' : 'late'])}</p>`);
-  if (next) $('raceLanes').insertAdjacentHTML('beforeend', `<p class="sum-actions"><button type="button" id="outcomeBtn" class="outcome-btn" data-next="${next}">${esc(s.outcomeBtn[next])}</button></p>`);
+  if (r.sched.heli) $('raceLanes').insertAdjacentHTML('afterbegin', `<p class="sum-note conservative">${esc(s.heliNote)}</p>`);
+  if (nexts.length) $('raceLanes').insertAdjacentHTML('beforeend', `<p class="sum-actions">${nexts.map((n) => `<button type="button" class="outcome-btn" data-next="${n}">${esc(s.outcomeBtn[n])}</button>`).join(' ')}</p>`);
   $('raceLanes').classList.add('summary');
   document.body.classList.add('race-summary');
   $('raceClock').hidden = true;
@@ -1091,11 +1117,12 @@ function setRaceTrails(min) {
 // ---------- events ----------
 function bind() {
   $('raceLanes').addEventListener('click', (e) => {
-    const b = e.target.closest && e.target.closest('#outcomeBtn');
+    const b = e.target.closest && e.target.closest('.outcome-btn');
     if (b && ui.raceIn) startRace(b.dataset.next); // the other decision, without asking again
   });
   $('askSurgery').addEventListener('click', () => answerDecision('surgery'));
   $('askConservative').addEventListener('click', () => answerDecision('conservative'));
+  $('askHelicopter').addEventListener('click', () => answerDecision('helicopter'));
   $('drawSeg').addEventListener('change', (e) => { state.s = Number(e.target.value); update(); });
   $('resultSeg').addEventListener('change', (e) => { state.result = e.target.value; update(); });
   $('speedSeg').addEventListener('change', (e) => { state.k = Number(e.target.value); update(); });
@@ -1313,6 +1340,12 @@ async function main() {
     const r = await fetch('data/hospitals.json');
     if (!r.ok) throw new Error(`hospitals: HTTP ${r.status}`);
     ui.hospitals = await r.json();
+    try { // optional: state and landing site per hospital (helicopter option); without it no helicopter is offered
+      const lr = await fetch('data/landing.json');
+      ui.landing = lr.ok ? (await lr.json()).sites : null;
+    } catch {
+      ui.landing = null;
+    }
     ui.grid = await loadGrid('data');
     initMap();
   } catch (err) {

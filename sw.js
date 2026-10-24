@@ -1,9 +1,9 @@
 // Offline cache for the app shell only. Map tiles, fonts and MapLibre come from the network.
-const CACHE = 'stroke-sim-v31';
+const CACHE = 'stroke-sim-v32';
 const SHELL = [
   './', 'index.html', 'styles.css', 'config.js', 'manifest.webmanifest',
-  'js/app.js', 'js/decide.js', 'js/grid.js', 'js/hospitals.js', 'js/i18n.js', 'js/laea.js', 'js/route.js', 'js/story.js', 'js/race.js', 'js/search.js', 'js/national.js', 'js/roads.js', 'js/start.js',
-  'data/hospitals.json', 'icons/icon-192.png', 'icons/icon-512.png',
+  'js/app.js', 'js/decide.js', 'js/grid.js', 'js/hospitals.js', 'js/i18n.js', 'js/laea.js', 'js/route.js', 'js/story.js', 'js/race.js', 'js/search.js', 'js/national.js', 'js/roads.js', 'js/start.js', 'js/heli.js',
+  'data/hospitals.json', 'data/landing.json', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
