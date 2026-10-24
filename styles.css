@@ -100,19 +100,25 @@ button, input { font: inherit; }
 }
 .badge strong { font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.15; }
 .badge span { font-size: 14px; color: #3d4b5c; }
-/* the decision after the first scan: the race waits for the answer (same place as the badge; phones: above the bar) */
+/* the decision after the first scan: the next step, centred; the race waits, blurred behind it (as behind the start box) */
 .decision-ask {
-  position: absolute; z-index: 4; top: 14px; left: 252px; right: calc(var(--panel-w) + 56px); margin: 0 auto; max-width: 500px;
-  padding: 12px 16px; border-radius: var(--radius-m); background: #ffffff; color: var(--ink);
-  box-shadow: 0 4px 16px rgba(19, 39, 63, 0.22); border-left: 6px solid #6B7785; display: grid; gap: 6px;
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px;
+  background: rgba(19, 39, 63, 0.3); backdrop-filter: blur(7px) saturate(0.8); -webkit-backdrop-filter: blur(7px) saturate(0.8);
 }
 .decision-ask[hidden] { display: none; }
-.decision-ask strong { font-family: var(--font-display); font-weight: 700; font-size: 20px; line-height: 1.2; }
-.decision-ask span { font-size: 14px; color: #3d4b5c; }
-.ask-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.ask-btn { flex: 1; min-height: 42px; padding: 8px 12px; font: inherit; font-size: 15px; font-weight: 600; border: 1px solid #9AA6B2; border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer; }
-.ask-btn:hover { border-color: #4a5a6d; }
-.ask-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.ask-card {
+  width: min(540px, 100%); display: grid; gap: 8px; padding: 22px 24px 24px; border-radius: var(--radius-m);
+  background: var(--console); color: var(--on-console); box-shadow: 0 18px 60px rgba(8, 20, 36, 0.45);
+}
+.ask-card strong { font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.2; }
+.ask-card span { font-size: 15px; opacity: 0.85; }
+.ask-btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.ask-btn {
+  flex: 1 1 200px; min-height: 48px; padding: 10px 14px; font: inherit; font-size: 16px; font-weight: 600; border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.45); background: transparent; color: var(--on-console); cursor: pointer;
+}
+.ask-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.ask-btn:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }
 .result-marker { display: flex; align-items: center; gap: 6px; pointer-events: none; }
 .result-marker .tube {
   width: 34px; height: 34px; border-radius: 50%; background: #F0E442; border: 2px solid #18222F;
@@ -331,7 +337,8 @@ body.race-summary .lap-box { display: none; }
 .mark.on { display: block; }
 .mark.grey { border-color: #5B6B7C; }
 .sum-title { margin: 0; font-weight: 700; }
-.race-lanes.summary { background: #ffffff; }
+.race-lanes.summary { background: #ffffff; max-height: min(52vh, 560px); overflow-y: auto; } /* the map keeps room above the end table */
+body.racing .natlegend { display: none; }
 .sum-table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .sum-table th, .sum-table td { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid #E9EDF1; vertical-align: baseline; }
 .sum-table thead th { font-size: 13px; border-bottom: 2px solid #C9D3DD; }
@@ -488,7 +495,6 @@ body.picking .map { cursor: crosshair; }
   .watermark span { display: none; }
   /* the race on a phone: the card steps aside, the map gets the screen; clock on top, lap timers and a slim bar below */
   body.racing .panel { display: none; }
-  .decision-ask { top: auto; left: 8px; right: 8px; bottom: calc(62px + env(safe-area-inset-bottom)); max-width: none; }
   body.racing .race-bar {
     display: flex; gap: 8px; position: absolute; z-index: 5; left: 8px; right: 46px; bottom: calc(8px + env(safe-area-inset-bottom));
   }
