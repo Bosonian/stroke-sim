@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=34';
+import { resultMinute, splitRoute } from './story.js?v=35';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -129,6 +129,16 @@ export function minuteAt(segments, sec) {
   return segments.length ? segments[segments.length - 1].min1 : 0;
 }
 
+/** Playback seconds at model minute `min` (the inverse of minuteAt). */
+export function secondsAt(segments, min) {
+  let sec = 0;
+  for (const g of segments) {
+    if (min <= g.min1) return sec + Math.max(0, min - g.min0) / g.rate;
+    sec += (g.min1 - g.min0) / g.rate;
+  }
+  return sec;
+}
+
 export function totalSeconds(segments) {
   return segments.reduce((a, g) => a + (g.min1 - g.min0) / g.rate, 0);
 }
@@ -244,6 +254,12 @@ export function doorChip(min, { arrive, scan, leaves, decided = null, conservati
 export function outcomeSwitch(sched, outcome) {
   if (outcome === 'conservative') return 'surgery';
   return sched.without.events.some((e) => e.key === 'transferLeaves') ? 'conservative' : null;
+}
+
+/** Minute at which the race stops to ask for the decision: the grey dot's, where a transfer hangs on it; else null. */
+export function decisionPause(sched) {
+  if (sched.conservative || outcomeSwitch(sched, 'surgery') !== 'conservative') return null;
+  return sched.without.events.find((e) => e.key === 'decision')?.min ?? null;
 }
 
 const MOVING = ['scene', 'testScene', 'testDriving', 'resultDriving', 'toSu', 'toNs', 'transfer'];

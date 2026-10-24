@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=34'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=34';
-import { loadGrid } from './grid.js?v=34';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=34';
-import { range } from './decide.js?v=34';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=34';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=34';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=34';
-import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip, outcomeSwitch } from './race.js?v=34';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=34';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=34';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=34';
+import { config, waitMin } from '../config.js?v=35'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=35';
+import { loadGrid } from './grid.js?v=35';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=35';
+import { range } from './decide.js?v=35';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=35';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=35';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=35';
+import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip, outcomeSwitch, decisionPause, secondsAt } from './race.js?v=35';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=35';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=35';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=35';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -686,11 +686,12 @@ function chip(text, cls, at, anchor, offset) {
   return m;
 }
 
-function startRace() {
+/** outcome: the decision chosen beforehand (end-card replay); without one the race asks after the first scan. */
+function startRace(outcome = null) {
   const inp = ui.raceIn;
   if (!inp || !ui.map) return;
   stopRace();
-  const sched = raceSchedule(inp.args);
+  const sched = raceSchedule(outcome ? { ...inp.args, outcome } : inp.args);
   const seg = clockSegments(sched);
   const r = { inp, sched, seg, total: totalSeconds(seg), t0: performance.now(), raf: 0, marks: [], fired: new Set(), done: false, plan: false, watches: doorWatches(sched).map((w) => ({ ...w, chip: null })) };
   r.clock = { ...config.clock, startMin: minuteOfDay(new Date()) }; // the assessment starts now (each Replay too)
@@ -698,6 +699,9 @@ function startRace() {
   r.lanes = { with: laneLaps(r.laps, 'with'), without: laneLaps(r.laps, 'without') };
   r.lapKey = '';
   r.flash = {};
+  r.outcome = outcome || 'surgery';
+  r.pauseAt = outcome ? null : decisionPause(sched);
+  r.answered = false;
   ui.race = r;
   document.body.classList.add('racing');
   padMap(); // on phones the card steps aside during the race
@@ -741,7 +745,47 @@ function fitRace({ top, bottom, left = 60, right = 60 }, bounds = ui.race.bounds
 }
 
 function skipRace() {
-  if (ui.race && !ui.race.done) ui.race.t0 = performance.now() - ui.race.total * 1000;
+  const r = ui.race;
+  if (!r || r.done) return;
+  if (r.pauseAt != null && !r.answered) { r.t0 = performance.now() - secondsAt(r.seg, r.pauseAt) * 1000; return; } // Skip stops at the question
+  r.t0 = performance.now() - r.total * 1000;
+}
+
+/** The race stops at the grey dot's decision and asks: surgery (transfer) or conservative (stays). */
+function askDecision() {
+  const r = ui.race;
+  const s = L();
+  const box = $('decisionAsk');
+  if (!box.hidden) return;
+  $('decisionAskTitle').textContent = s.ask.title(wallTime(r.pauseAt, r.inp.args.s, r.clock));
+  $('decisionAskSub').textContent = s.ask.sub;
+  $('askSurgery').textContent = s.ask.surgery;
+  $('askConservative').textContent = s.ask.conservative;
+  box.hidden = false;
+  if ($('askSurgery').focus) $('askSurgery').focus();
+}
+
+/** The answer: a conservative decision swaps in the schedule without the transfer (the same up to this minute). */
+function answerDecision(outcome) {
+  const r = ui.race;
+  if (!r || r.pauseAt == null || r.answered) return;
+  r.answered = true;
+  $('decisionAsk').hidden = true;
+  if (outcome === 'conservative') {
+    const old = r.watches;
+    r.sched = raceSchedule({ ...r.inp.args, outcome });
+    r.seg = clockSegments(r.sched);
+    r.total = totalSeconds(r.seg);
+    r.laps = laps(r.sched, config.clock.assessMin);
+    r.lanes = { with: laneLaps(r.laps, 'with'), without: laneLaps(r.laps, 'without') };
+    r.lapKey = '';
+    r.watches = doorWatches(r.sched).map((w) => ({ ...w, chip: old.find((o) => o.lane === w.lane)?.chip || null }));
+    buildLanes();
+  }
+  r.outcome = outcome;
+  r.t0 = performance.now() - secondsAt(r.seg, r.pauseAt) * 1000;
+  if (reduceMotion()) r.t0 -= r.total * 1000;
+  r.raf = requestAnimationFrame(raceFrame);
 }
 
 /** Back to the static view (the caller redraws it). */
@@ -757,6 +801,7 @@ function stopRace() {
   document.body.classList.remove('racing');
   padMap();
   $('raceClock').hidden = true;
+  $('decisionAsk').hidden = true;
   $('lapBox').hidden = true;
   $('lapWith').innerHTML = '';
   $('lapWithout').innerHTML = '';
@@ -773,6 +818,11 @@ function raceFrame() {
   const r = ui.race;
   if (!r) return;
   const sec = Math.min(r.total, (performance.now() - r.t0) / 1000);
+  if (r.pauseAt != null && !r.answered && sec >= secondsAt(r.seg, r.pauseAt)) {
+    drawRace(r.pauseAt);
+    askDecision();
+    return; // the clock waits for the answer
+  }
   if (sec >= r.total) r.done = true; // the lap list then drops its "now" line
   drawRace(r.done ? r.sched.end : minuteAt(r.seg, sec)); // the last frame exactly at the end (no rounding short of it)
   if (r.done) {
@@ -809,7 +859,7 @@ function drawRace(min) {
   for (const lane of ['with', 'without']) {
     for (const e of sched[lane].events) {
       const id = `${lane}:${e.key}`;
-      if (min < e.min || r.fired.has(id)) continue;
+      if (min < e.min || r.fired.has(id) || (e.key === 'decision' && r.pauseAt != null && !r.answered)) continue; // shown once answered
       r.fired.add(id);
       raceEvent(lane, e, at(lane, e.min));
     }
@@ -998,8 +1048,7 @@ function showSummary() {
   $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle(wallTime(r.sched.start - config.clock.assessMin, r.inp.args.s, r.clock)))}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
     + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>${explainers(s, r)}`);
   // the other decision as a second run: conservative cancels the transfer (illustrative; no share is shown)
-  const outcome = r.inp.args.outcome || 'surgery';
-  const next = outcomeSwitch(r.sched, outcome);
+  const next = outcomeSwitch(r.sched, r.outcome);
   if (r.sched.conservative) $('raceLanes').insertAdjacentHTML('afterbegin', `<p class="sum-note conservative">${esc(s.conservativeNote[mode === 'turn' ? 'turn' : 'late'])}</p>`);
   if (next) $('raceLanes').insertAdjacentHTML('beforeend', `<p class="sum-actions"><button type="button" id="outcomeBtn" class="outcome-btn" data-next="${next}">${esc(s.outcomeBtn[next])}</button></p>`);
   $('raceLanes').classList.add('summary');
@@ -1043,10 +1092,10 @@ function setRaceTrails(min) {
 function bind() {
   $('raceLanes').addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('#outcomeBtn');
-    if (!b || !ui.raceIn) return;
-    ui.raceIn.args.outcome = b.dataset.next; // replay with the other decision
-    startRace();
+    if (b && ui.raceIn) startRace(b.dataset.next); // the other decision, without asking again
   });
+  $('askSurgery').addEventListener('click', () => answerDecision('surgery'));
+  $('askConservative').addEventListener('click', () => answerDecision('conservative'));
   $('drawSeg').addEventListener('change', (e) => { state.s = Number(e.target.value); update(); });
   $('resultSeg').addEventListener('change', (e) => { state.result = e.target.value; update(); });
   $('speedSeg').addEventListener('change', (e) => { state.k = Number(e.target.value); update(); });
