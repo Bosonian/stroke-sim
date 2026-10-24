@@ -67,7 +67,10 @@ export const strings = {
     decisionNote: (n) => `${n} min after the scan`,
     decisionNoteNs: (n) => `${n} min after the scan, at neurosurgery (no transfer needed)`,
     outcomeBtn: { conservative: 'Replay with a conservative decision', surgery: 'Replay with a decision for surgery' },
-    conservativeNote: 'Illustrative replay: the decision is conservative (no surgery), so the patient without the test stays at the stroke unit. With the test the drive to neurosurgery was not needed for surgery. How often the decision is conservative is not shown.',
+    conservativeNote: {
+      turn: 'Illustrative replay: the decision is conservative (no surgery), so the patient without the test stays at the stroke unit. With the test the drive to neurosurgery was not needed for surgery. How often the decision is conservative is not shown.',
+      late: 'Illustrative replay: the decision is conservative (no surgery), so both stay at the stroke unit; the test result came too late to change the destination. How often the decision is conservative is not shown.',
+    },
     organising: 'Transfer being organised',
     transferLeaves: 'transfer leaves',
     placeHint: 'Click or tap anywhere on the map, or type a place or address, to place the ambulance at a patient with suspected stroke. Drag it to move.',
@@ -251,7 +254,10 @@ export const strings = {
     decisionNote: (n) => `${n} min nach der Bildgebung`,
     decisionNoteNs: (n) => `${n} min nach der Bildgebung, in der Neurochirurgie (keine Verlegung nötig)`,
     outcomeBtn: { conservative: 'Noch einmal mit konservativer Entscheidung', surgery: 'Noch einmal mit Entscheidung zur Operation' },
-    conservativeNote: 'Illustrative Wiederholung: Die Entscheidung ist konservativ (keine Operation); ohne Test bleibt die Person daher in der Stroke Unit. Mit Test war die Fahrt zur Neurochirurgie für eine Operation nicht nötig. Wie oft konservativ entschieden wird, zeigt die Simulation nicht.',
+    conservativeNote: {
+      turn: 'Illustrative Wiederholung: Die Entscheidung ist konservativ (keine Operation); ohne Test bleibt die Person daher in der Stroke Unit. Mit Test war die Fahrt zur Neurochirurgie für eine Operation nicht nötig. Wie oft konservativ entschieden wird, zeigt die Simulation nicht.',
+      late: 'Illustrative Wiederholung: Die Entscheidung ist konservativ (keine Operation); daher bleiben beide in der Stroke Unit. Das Testergebnis kam zu spät, um das Ziel zu ändern. Wie oft konservativ entschieden wird, zeigt die Simulation nicht.',
+    },
     organising: 'Verlegung wird organisiert',
     transferLeaves: 'Verlegung fährt ab',
     placeHint: 'Klicken oder tippen Sie auf eine beliebige Stelle der Karte oder geben Sie einen Ort oder eine Adresse ein, um den Rettungswagen zu einem Notfall mit Schlaganfallverdacht zu setzen. Zum Verschieben ziehen.',

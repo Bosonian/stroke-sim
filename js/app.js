@@ -1000,7 +1000,7 @@ function showSummary() {
   // the other decision as a second run: conservative cancels the transfer (illustrative; no share is shown)
   const outcome = r.inp.args.outcome || 'surgery';
   const next = outcomeSwitch(r.sched, outcome);
-  if (r.sched.conservative) $('raceLanes').insertAdjacentHTML('afterbegin', `<p class="sum-note conservative">${esc(s.conservativeNote)}</p>`);
+  if (r.sched.conservative) $('raceLanes').insertAdjacentHTML('afterbegin', `<p class="sum-note conservative">${esc(s.conservativeNote[mode === 'turn' ? 'turn' : 'late'])}</p>`);
   if (next) $('raceLanes').insertAdjacentHTML('beforeend', `<p class="sum-actions"><button type="button" id="outcomeBtn" class="outcome-btn" data-next="${next}">${esc(s.outcomeBtn[next])}</button></p>`);
   $('raceLanes').classList.add('summary');
   document.body.classList.add('race-summary');
