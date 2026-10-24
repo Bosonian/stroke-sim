@@ -258,6 +258,7 @@ body.race-summary .lap-box { display: none; }
   }
   .race-side > .race-clock, .race-side > .lap-box { position: static; transform: none; min-width: 0; }
   .race-side > .lap-box { min-height: 0; flex: 0 1 auto; }
+  .race-side .race-phase li { white-space: normal; }
 }
 .race-dot { border-radius: 50%; pointer-events: none; }
 .race-dot.grey { width: 26px; height: 26px; background: #5B6B7C; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(19, 39, 63, 0.45); }
@@ -438,6 +439,9 @@ body.picking .map { cursor: crosshair; }
   .lane { grid-template-columns: 6.5em 1fr; }
   .sum-table { font-size: 13px; }
   .sum-table td small { display: block; margin-left: 0; white-space: normal; }
+  .sum-table th, .sum-table td { padding-right: 6px; }
+  .sum-table td b { font-size: 15px; }
+  .sum-table td.diff { white-space: normal; } /* the table fits a 360 px screen */
   .race-clock strong { font-size: 26px; }
   .race-phase li { font-size: 13px; white-space: normal; }
   .pick-bar { left: 12px; right: 56px; top: 34px; width: auto; margin: 0; justify-content: space-between; font-size: 14px; }
@@ -445,6 +449,7 @@ body.picking .map { cursor: crosshair; }
   body.picking .panel, body.picking .badge { display: none; }
   .lap-box { top: auto; bottom: calc(var(--sheet-h, 16vh) + 10px); right: 8px; width: calc(100% - 16px); max-height: 30vh; gap: 8px; }
   .lap-list { font-size: 11.5px; }
+  .lap-list li:nth-last-child(n+6) { display: none; } /* the last 4 milestones and 'now'; the end table has all */
   .lap-head { font-size: 12px; }
   .race-clock { max-width: calc(100vw - 24px); }
   .badge strong { font-size: 18px; }
@@ -470,8 +475,8 @@ body.picking .map { cursor: crosshair; }
   /* the attribution moves under the zoom buttons (the bar covers the bottom) */
   body.racing .maplibregl-ctrl-bottom-right { top: 88px; bottom: auto; }
   /* the end: headline on top, the table at most half the screen above the bar, the map in between */
-  body.racing.race-summary .badge { display: grid; top: 8px; }
+  body.racing.race-summary .badge { display: grid; top: 8px; right: 56px; }
   body.racing.race-summary .race-lanes { top: auto; bottom: calc(62px + env(safe-area-inset-bottom)); max-height: 48vh; }
-  body.racing.race-summary .watermark { bottom: calc(68px + 48vh + env(safe-area-inset-bottom)); }
+  body.racing.race-summary .watermark { top: 54px; bottom: auto; } /* under the headline, clear of the route chips */
 }
 @media (prefers-reduced-motion: reduce) { .panel { transition: none; } .race-dot.red { animation: none; } .race-dot.red.flash::after { display: none; } }

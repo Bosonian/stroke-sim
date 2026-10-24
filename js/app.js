@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=26'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=26';
-import { loadGrid } from './grid.js?v=26';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=26';
-import { range } from './decide.js?v=26';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=26';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=26';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=26';
-import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=26';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=26';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=26';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=26';
+import { config, waitMin } from '../config.js?v=27'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=27';
+import { loadGrid } from './grid.js?v=27';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=27';
+import { range } from './decide.js?v=27';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=27';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=27';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=27';
+import { centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=27';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=27';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=27';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=27';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -700,6 +700,10 @@ function startRace() {
   ui.race = r;
   document.body.classList.add('racing');
   padMap(); // on phones the card steps aside during the race
+  if (isPhone()) { // phones: the attribution shrinks to its (i) button under the zoom buttons; a tap opens it
+    const at = document.querySelector('.maplibregl-ctrl-attrib');
+    if (at) at.classList.remove('maplibregl-compact-show');
+  }
   setLinks([]);
   $('lapBox').hidden = false;
   ui.resultMarker.remove();
@@ -979,7 +983,7 @@ function showSummary() {
   const badge = $('badge');
   if (isPhone()) { // headline on top, table at the bottom: the map in between
     const h = (lanes.offsetParent && lanes.offsetParent.clientHeight) || window.innerHeight;
-    fitRace({ top: (badge.offsetTop || 0) + badge.offsetHeight + 16, bottom: h - (lanes.offsetTop || 0) + 16 });
+    fitRace({ top: (badge.offsetTop || 0) + badge.offsetHeight + 30, bottom: h - (lanes.offsetTop || 0) + 44 }); // room for chips below a point
   }
   else fitRace({ top: badge.offsetTop + badge.offsetHeight + 20, bottom: lanes.offsetHeight + 48 + 30 });
 }
