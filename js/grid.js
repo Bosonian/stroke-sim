@@ -1,7 +1,7 @@
 // Drive-time grid lookup. Layout written by src/simulator_build.py: uint16 little-endian, row-major,
 // row 0 = southernmost 1 km row of EPSG:3035, 6 values per square
 // (su_idx, su_t, ns_idx, ns_t, both_idx, both_t), times in tenths of a minute at k = 1, 0xFFFF = no data.
-import { toLaea } from './laea.js?v=33';
+import { toLaea } from './laea.js?v=34';
 
 const NO_DATA = 0xffff;
 

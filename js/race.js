@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=33';
+import { resultMinute, splitRoute } from './story.js?v=34';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -9,11 +9,13 @@ const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] }
 /** Event times and driven legs for both lanes.
  *  mode: from story() ('turn' | 'late' | 'same' | 'below'); tSu, suNs, nsDirect, pNs: minutes at k = 1
  *  (suNs null without a transfer; pNs from the result point when r > 0; nsDirect from the start when r = 0);
- *  scan: door-to-image; stay: door-in-door-out; decide: from the first scan to the decision (surgery or conservative). */
-export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, scan, stay, decide = 0 }) {
+ *  scan: door-to-image; stay: door-in-door-out; decide: from the first scan to the decision (surgery or conservative);
+ *  outcome: 'surgery' (default) or 'conservative' (illustrative replay: no transfer, the dots stay where they are). */
+export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, scan, stay, decide = 0, outcome = 'surgery' }) {
   const r = resultMinute(s, A);
   const su = tSu * k;
-  const transfer = mode !== 'same' && mode !== 'below' && suNs != null;
+  const conservative = outcome === 'conservative' && mode !== 'below';
+  const transfer = mode !== 'same' && mode !== 'below' && suNs != null && !conservative;
   const treats = TREATS[tier] || [];
 
   // without the test: stroke unit, scan (treatment), transfer after the door-in-door-out time
@@ -49,7 +51,7 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   const all = [...wi.events, ...wo.events].map((e) => e.min);
   const same = mode === 'same'; // the stroke unit has neurosurgery: arriving there is arriving at neurosurgery
   if (same) wi.sameSite = wo.sameSite = true;
-  return { start: -s, end: Math.max(...all), with: wi, without: wo, diff: { ns: diff('ns'), bp: diff('bp') }, same };
+  return { start: -s, end: Math.max(...all), with: wi, without: wo, diff: { ns: diff('ns'), bp: diff('bp') }, same, ...(conservative ? { conservative } : {}) };
 }
 
 /** What a dot is doing at minute `min`, for the live heading: 'scene' | 'testScene' | 'testDriving' | 'resultDriving' |
@@ -217,23 +219,31 @@ export function summaryTable(sched) {
 export function doorWatches(sched) {
   const at = (lane, key) => sched[lane].events.find((e) => e.key === key)?.min;
   const out = [];
+  const flag = sched.conservative ? { conservative: true } : {};
   if (at('without', 'su') != null) {
-    out.push({ lane: 'without', arrive: at('without', 'su'), scan: at('without', 'scan'), leaves: at('without', 'transferLeaves') ?? null, decided: at('without', 'transferLeaves') == null ? at('without', 'decision') ?? null : null });
+    out.push({ lane: 'without', arrive: at('without', 'su'), scan: at('without', 'scan'), leaves: at('without', 'transferLeaves') ?? null, decided: at('without', 'transferLeaves') == null ? at('without', 'decision') ?? null : null, ...flag });
   }
   if (at('with', 'su') == null && at('with', 'ns') != null && at('with', 'scan') != null) {
-    out.push({ lane: 'with', arrive: at('with', 'ns'), scan: at('with', 'scan'), leaves: null, decided: at('with', 'decision') ?? null });
+    out.push({ lane: 'with', arrive: at('with', 'ns'), scan: at('with', 'scan'), leaves: null, decided: at('with', 'decision') ?? null, ...flag });
   }
   return out;
 }
 
 /** Text of a door-to-image chip at minute `min`: running until the scan, then the decision where the dot stays, or
  *  (stroke unit before a transfer) the time there until the transfer leaves. */
-export function doorChip(min, { arrive, scan, leaves, decided = null }, L, time = null) {
+export function doorChip(min, { arrive, scan, leaves, decided = null, conservative = false }, L, time = null) {
   const m = Math.max(0, Math.floor(min - arrive));
   const at = (text, t) => (time ? `${text} ${time(t)}` : text); // pinned milestones with their clock time
   if (min < scan) return L.doorToImage(m, Math.round(scan - arrive));
-  if (leaves == null) return decided != null && min >= decided ? at(L.decided, decided) : at(L.scanDone, scan);
+  if (leaves == null) return decided != null && min >= decided ? at(conservative ? L.decidedConservative : L.decided, decided) : at(L.scanDone, scan);
   return min < leaves ? `${L.organising} · ${L.stopwatch(m)}` : at(L.transferLeaves, leaves); // scan done, transfer being organised
+}
+
+/** The other decision to offer on the end card: 'conservative' when it would cancel a transfer, 'surgery' to go back,
+ *  or null where it changes nothing (no transfer, or no result to act on). */
+export function outcomeSwitch(sched, outcome) {
+  if (outcome === 'conservative') return 'surgery';
+  return sched.without.events.some((e) => e.key === 'transferLeaves') ? 'conservative' : null;
 }
 
 const MOVING = ['scene', 'testScene', 'testDriving', 'resultDriving', 'toSu', 'toNs', 'transfer'];
