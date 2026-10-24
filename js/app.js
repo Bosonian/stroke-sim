@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=30'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=30';
-import { loadGrid } from './grid.js?v=30';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=30';
-import { range } from './decide.js?v=30';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=30';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=30';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=30';
-import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=30';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=30';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=30';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=30';
+import { config, waitMin } from '../config.js?v=31'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=31';
+import { loadGrid } from './grid.js?v=31';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=31';
+import { range } from './decide.js?v=31';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=31';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=31';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=31';
+import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=31';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=31';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=31';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=31';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -900,7 +900,11 @@ function raceEvent(lane, e, pos) {
     }
   } else if (e.key === 'decision') {
     // after a transfer: scan and decision follow at neurosurgery (one chip if both dots arrive together)
-    if (e.untimed && r.decisionAt !== e.min) { r.decisionAt = e.min; chip(s.lap.decisionLater, 'clock', pos, 'top', [0, 18]); }
+    if (e.untimed && r.decisionAt !== e.min) {
+      r.decisionAt = e.min;
+      const taken = r.watches.some((w) => w.lane === 'with' && w.chip); // the red dot's scan chip is already below this hospital
+      chip(s.lap.decisionLater, 'clock', pos, taken ? 'bottom' : 'top', [0, taken ? -26 : 18]);
+    }
   } else if (e.key === 'bp' || e.key === 'reversal') {
     const text = `${e.key === 'bp' ? s.chipBp : s.chipReversal}${e.afterScan ? ` · ${s.chipAfterScan}` : ''}`;
     const row = e.key === 'bp' ? 0 : 26;
