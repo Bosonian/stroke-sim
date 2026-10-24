@@ -37,6 +37,12 @@ export const config = {
       journal: 'BMC Emerg Med', ref: '2024;24(1):224', doi: '10.1186/s12873-024-01142-3',
     },
   },
+  // From the first scan to the decision on surgery or conservative treatment, made on that scan's images (sent to the
+  // neurosurgeons; no second scan after a transfer). Author's assumption, 24.10.2026; no published source.
+  decision: {
+    min: 10,
+    source: "Author's assumption (24.10.2026): time for the neurosurgeons to decide whether to operate and to clarify with the relatives the patient's prior condition and will; no published source.",
+  },
   // Stay at the stroke unit before transfer (door-in-door-out: arrival to departure at the first hospital).
   // German figure (author, 21.10.2026), lower quartile used (docs/superpowers/specs/2026-10-21-race-design.md).
   stay: {

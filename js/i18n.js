@@ -62,9 +62,8 @@ export const strings = {
     stopwatch: (m) => `at the stroke unit ${m} min`,
     doorToImage: (m, n) => `Door-to-image ${m} / ${n} min`,
     scanDone: 'Scan done',
-    scanDecision: 'Scan and decision',
-    decisionImages: 'Decision on transferred images',
-    onImages: 'on the images from the stroke unit',
+    decided: 'Decision',
+    decisionNote: (n) => `${n} min after the scan`,
     organising: 'Transfer being organised',
     transferLeaves: 'transfer leaves',
     placeHint: 'Click or tap anywhere on the map, or type a place or address, to place the ambulance at a patient with suspected stroke. Drag it to move.',
@@ -102,7 +101,7 @@ export const strings = {
     roadKey: { autobahn: 'Autobahn (motorway)', bundes: 'Bundesstraße (federal road)', land: 'Landstraße (state or district road)' },
     terrainNote: 'Road colours follow the road class in OpenStreetMap (Autobahn blue, Bundesstraße yellow, other main roads white); hill shading: Mapzen Terrain Tiles on AWS (incl. Copernicus EU-DEM, SRTM). Both are for orientation only: OSRM drive times take road types and speed limits into account, not slopes or traffic.',
     tableTitle: (t) => `What happens when (clock time; assessment begins at ${t})`,
-    lap: { assess: 'Assessment begins', drawn: 'Blood drawn · test starts', depart: 'Departure', result: (t) => `Test result ${t}`, su: 'At the stroke unit', suNs: 'At the stroke unit with neurosurgery', ns: 'At neurosurgery', scan: 'Imaging (CT/MRI)', bp: 'BP lowering starts', reversal: 'Anticoagulation reversal starts', transferLeaves: 'Transfer leaves', decision: 'Decision: surgery or conservative', decisionImages: 'Decision on the transferred images: surgery or conservative', now: 'now', inAmbulance: 'in the ambulance' },
+    lap: { assess: 'Assessment begins', drawn: 'Blood drawn · test starts', depart: 'Departure', result: (t) => `Test result ${t}`, su: 'At the stroke unit', suNs: 'At the stroke unit with neurosurgery', ns: 'At neurosurgery', scan: 'Imaging (CT/MRI)', bp: 'BP lowering starts', reversal: 'Anticoagulation reversal starts', transferLeaves: 'Transfer leaves', decision: 'Decision: surgery or conservative', now: 'now', inAmbulance: 'in the ambulance' },
     colDiff: 'Difference',
     inAmbulance: 'in the ambulance',
     beforeScan: 'at the hospital, before the scan',
@@ -126,6 +125,10 @@ export const strings = {
       scan: {
         title: (n) => `Imaging after ${n} min (door-to-imaging)`,
         body: (d) => `The time from arrival at the stroke unit to the start of CT or MRI. Without the test, blood-pressure lowering and reversal of anticoagulation wait for this scan. In 1,628 ambulance patients with suspected stroke at three Düsseldorf stroke centres (2021–22) the median was ${d.median} min; the middle half took ${d.p25}–${d.p75} min. The simulation uses ${d.p25} min, the quick end, so it does not overstate what the test gains.`,
+      },
+      decision: {
+        title: (n) => `Decision ${n} min after the scan (assumption)`,
+        body: (d) => `Surgery or conservative treatment is decided ${d.min} min after the first scan. The images are sent electronically to the neurosurgeons, so there is no second scan after a transfer. In these minutes the neurosurgeons decide whether to operate and clarify with the relatives how ill the patient already was and what the patient would have wanted. This is the author's assumption, not a measured value; no source for this time was found.`,
       },
       stay: {
         title: (n) => `Transfer after ${n} min (door-in-door-out)`,
@@ -239,9 +242,8 @@ export const strings = {
     stopwatch: (m) => `in der Stroke Unit ${m} min`,
     doorToImage: (m, n) => `Door-to-Imaging ${m} / ${n} min`,
     scanDone: 'Bildgebung erfolgt',
-    scanDecision: 'Bildgebung und Entscheidung',
-    decisionImages: 'Entscheidung anhand übermittelter Bilder',
-    onImages: 'anhand der Bilder der Stroke Unit',
+    decided: 'Entscheidung',
+    decisionNote: (n) => `${n} min nach der Bildgebung`,
     organising: 'Verlegung wird organisiert',
     transferLeaves: 'Verlegung fährt ab',
     placeHint: 'Klicken oder tippen Sie auf eine beliebige Stelle der Karte oder geben Sie einen Ort oder eine Adresse ein, um den Rettungswagen zu einem Notfall mit Schlaganfallverdacht zu setzen. Zum Verschieben ziehen.',
@@ -279,7 +281,7 @@ export const strings = {
     roadKey: { autobahn: 'Autobahn', bundes: 'Bundesstraße', land: 'Landes- oder Kreisstraße' },
     terrainNote: 'Die Straßenfarben folgen der Straßenklasse in OpenStreetMap (Autobahn blau, Bundesstraße gelb, andere Hauptstraßen weiß); Geländeschattierung: Mapzen Terrain Tiles bei AWS (u. a. Copernicus EU-DEM, SRTM). Beides dient nur der Orientierung: Die OSRM-Fahrzeiten berücksichtigen Straßentyp und Tempolimits, aber keine Steigungen und keinen Verkehr.',
     tableTitle: (t) => `Was passiert wann (Uhrzeit; Untersuchung beginnt um ${t})`,
-    lap: { assess: 'Untersuchung beginnt', drawn: 'Blutentnahme · Test startet', depart: 'Abfahrt', result: (t) => `Testergebnis ${t}`, su: 'Ankunft Stroke Unit', suNs: 'Ankunft Stroke Unit mit Neurochirurgie', ns: 'Ankunft Neurochirurgie', scan: 'Bildgebung (CT/MRT)', bp: 'Beginn Blutdrucksenkung', reversal: 'Beginn Antagonisierung', transferLeaves: 'Verlegung fährt ab', decision: 'Entscheidung: operativ oder konservativ', decisionImages: 'Entscheidung anhand der übermittelten Bilder: operativ oder konservativ', now: 'jetzt', inAmbulance: 'im RTW' },
+    lap: { assess: 'Untersuchung beginnt', drawn: 'Blutentnahme · Test startet', depart: 'Abfahrt', result: (t) => `Testergebnis ${t}`, su: 'Ankunft Stroke Unit', suNs: 'Ankunft Stroke Unit mit Neurochirurgie', ns: 'Ankunft Neurochirurgie', scan: 'Bildgebung (CT/MRT)', bp: 'Beginn Blutdrucksenkung', reversal: 'Beginn Antagonisierung', transferLeaves: 'Verlegung fährt ab', decision: 'Entscheidung: operativ oder konservativ', now: 'jetzt', inAmbulance: 'im RTW' },
     colDiff: 'Unterschied',
     inAmbulance: 'im Rettungswagen',
     beforeScan: 'in der Klinik, vor der Bildgebung',
@@ -303,6 +305,10 @@ export const strings = {
       scan: {
         title: (n) => `Bildgebung nach ${n} min (Door-to-Imaging)`,
         body: (d) => `Die Zeit von der Ankunft in der Stroke Unit bis zum Beginn von CT oder MRT. Ohne Test warten Blutdrucksenkung und Antagonisierung auf diese Bildgebung. Bei 1.628 Rettungsdienstpatienten mit Schlaganfallverdacht in drei Düsseldorfer Stroke-Zentren (2021–22) lag der Median bei ${d.median} min, die mittlere Hälfte bei ${d.p25}–${d.p75} min. Die Simulation nimmt ${d.p25} min, das schnelle Ende, damit sie den Gewinn durch den Test nicht überschätzt.`,
+      },
+      decision: {
+        title: (n) => `Entscheidung ${n} min nach der Bildgebung (Annahme)`,
+        body: (d) => `Ob operiert oder konservativ behandelt wird, wird ${d.min} min nach der ersten Bildgebung entschieden. Die Bilder werden elektronisch an die Neurochirurgie übermittelt; nach einer Verlegung gibt es daher keine zweite Bildgebung. In dieser Zeit entscheidet die Neurochirurgie über eine Operation und klärt mit den Angehörigen, wie krank die Person vorher war und was ihr Wille ist. Das ist eine Annahme des Autors, kein gemessener Wert; eine Quelle für diese Zeit wurde nicht gefunden.`,
       },
       stay: {
         title: (n) => `Verlegung nach ${n} min (Door-in-door-out)`,

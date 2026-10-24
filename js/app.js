@@ -1,18 +1,18 @@
 // Stroke routing simulator: map, draggable ambulance, blood-draw timing and what a positive result changes.
 // Logic lives in story.js / decide.js / national.js (tested); this file wires it to the page.
 /* global maplibregl */
-import { config, waitMin } from '../config.js?v=32'; // versioned with app.js in index.html, so a new page never links old settings
-import { strings, startLang } from './i18n.js?v=32';
-import { loadGrid } from './grid.js?v=32';
-import { hospitalFeatures, siteKind } from './hospitals.js?v=32';
-import { range } from './decide.js?v=32';
-import { fetchLive, fetchRoute, routeLabel } from './route.js?v=32';
-import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=32';
-import { matchPresets, reversePlace, searchPlaces } from './search.js?v=32';
-import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=32';
-import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=32';
-import { ROAD_COLORS, styleRoads } from './roads.js?v=32';
-import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=32';
+import { config, waitMin } from '../config.js?v=33'; // versioned with app.js in index.html, so a new page never links old settings
+import { strings, startLang } from './i18n.js?v=33';
+import { loadGrid } from './grid.js?v=33';
+import { hospitalFeatures, siteKind } from './hospitals.js?v=33';
+import { range } from './decide.js?v=33';
+import { fetchLive, fetchRoute, routeLabel } from './route.js?v=33';
+import { leadTime, midpoint, remainder, resultMinute, splitRoute, story, withTestRoute } from './story.js?v=33';
+import { matchPresets, reversePlace, searchPlaces } from './search.js?v=33';
+import { labelSide, dotPhase, centredBox, minuteOfDay, laneLaps, latestLaps, laps, wallTime, phaseAt, raceSchedule, positionAt, clockSegments, minuteAt, totalSeconds, raceBlocker, summaryTable, diffText, COMPARED, doorWatches, doorChip } from './race.js?v=33';
+import { nationalPixels, DRAW_COLORS, LATE_GREY } from './national.js?v=33';
+import { ROAD_COLORS, styleRoads } from './roads.js?v=33';
+import { START_TIERS, canStart, startDecision, needsZoom } from './start.js?v=33';
 
 const KIND_COLOR = { su: '#0072B2', ns: '#CC79A7', both: '#009E73' };
 const LINE = { drive: '#33475B', via: '#7A8899', direct: '#CC79A7' };
@@ -644,7 +644,7 @@ function prepareRace({ live, look, st, su, ns, same, origin, suCoords, suSeg, br
       args: {
         s: state.s, A: config.A, k: state.k, tier: state.result, mode: st.mode, tSu: look.su.t,
         suNs: routes.transfer ? live.suNs.sec / 60 : null, nsDirect: look.ns.t, pNs: branch ? branch.sec / 60 : null,
-        scan: waitMin(config.doorToImaging), stay: waitMin(config.stay),
+        scan: waitMin(config.doorToImaging), stay: waitMin(config.stay), decide: config.decision.min,
       },
       routes, origin, su: ll(su), ns: ll(ns),
     };
@@ -836,7 +836,7 @@ function drawRace(min) {
 /** Text of one milestone ("BP lowering starts"), with "in the ambulance" unless `place` is false. */
 function lapText(l, place = true) {
   const s = L();
-  const key = l.key === 'su' && ui.race.sched.same ? 'suNs' : l.key === 'decision' && l.images ? 'decisionImages' : l.key; // one hospital with both
+  const key = l.key === 'su' && ui.race.sched.same ? 'suNs' : l.key; // one hospital with both
   const text = key === 'result' ? s.lap.result(s.results[ui.race.inp.args.tier]) : s.lap[key];
   return place && l.inAmbulance ? `${text} ${s.lap.inAmbulance}` : text;
 }
@@ -899,12 +899,13 @@ function raceEvent(lane, e, pos) {
       setTimeout(() => c.remove(), 1500);
     }
   } else if (e.key === 'decision') {
-    // after a transfer: no second scan, the decision is made on the images sent from the stroke unit (one chip if both dots arrive together)
-    if (e.images && r.decisionAt !== e.min) {
+    // where the dot stays, its door chip shows the decision; at a stroke unit before a transfer a chip below it
+    // (one chip if both dots are there)
+    const own = r.watches.find((w) => w.lane === lane) || r.watches.find((w) => w.lane === 'without'); // the red dot shares the stroke unit's
+    const stays = own && own.decided === e.min;
+    if (!stays && r.decisionAt !== e.min) {
       r.decisionAt = e.min;
-      const time = (m) => wallTime(m, r.inp.args.s, r.clock);
-      const taken = r.watches.some((w) => w.lane === 'with' && w.chip); // the red dot's scan chip is already below this hospital
-      chip(`${s.decisionImages} ${time(e.min)}`, 'clock', pos, taken ? 'bottom' : 'top', [0, taken ? -26 : 18]);
+      chip(`${s.decided} ${wallTime(e.min, r.inp.args.s, r.clock)}`, 'clock', pos, 'top', [0, 44]);
     }
   } else if (e.key === 'bp' || e.key === 'reversal') {
     const text = `${e.key === 'bp' ? s.chipBp : s.chipReversal}${e.afterScan ? ` · ${s.chipAfterScan}` : ''}`;
@@ -962,9 +963,10 @@ function explainers(s, r) {
   const cite = (c) => `<p class="cite"><span>${esc(s.explain.source)}</span> ${esc(c.authors)} ${esc(c.title)} <i>${esc(c.journal)}</i>. ${esc(c.ref)}. `
     + `<a href="https://doi.org/${c.doi}" target="_blank" rel="noopener">doi:${c.doi}</a></p>`;
   const item = (x, n, data) => `<details class="explain"><summary><b class="i" aria-hidden="true">i</b>${esc(x.title(n))}</summary>`
-    + `<p>${esc(x.body(data))}</p>${cite(data.cite)}</details>`;
+    + `<p>${esc(x.body(data))}</p>${data.cite ? cite(data.cite) : ''}</details>`;
   const transfer = r.sched.without.events.some((e) => e.key === 'transferLeaves');
   return item(s.explain.scan, r.inp.args.scan, config.doorToImaging)
+    + item(s.explain.decision, r.inp.args.decide, config.decision)
     + (transfer ? item(s.explain.stay, r.inp.args.stay, config.stay) : '');
 }
 
@@ -975,9 +977,9 @@ function showSummary() {
   const rows = summaryTable(r.sched);
   const fmt = (m) => wallTime(m, r.inp.args.s, r.clock);
   const WHERE = { ambulance: s.inAmbulance, beforeScan: s.beforeScan, afterScan: s.chipAfterScan };
-  const cell = (c) => {
+  const cell = (c, key) => {
     if (!c) return '<td class="none">—</td>';
-    if (c.images) return `<td><b>${fmt(c.min)}</b><small>${esc(s.onImages)}</small></td>`;
+    if (key === 'decision') return `<td><b>${fmt(c.min)}</b><small>${esc(s.decisionNote(r.inp.args.decide))}</small></td>`;
     const gap = c.gap ? s.gap[c.gap.kind](c.gap.min) : '';
     const note = c.place ? [s.milestone[c.place], gap].filter(Boolean).join(' · ') : c.where ? WHERE[c.where] : gap;
     return `<td><b>${fmt(c.min)}</b>${note ? `<small>${esc(note)}</small>` : ''}</td>`;
@@ -988,7 +990,7 @@ function showSummary() {
   // the timeline first, then (after a rule) the compared rows
   const firstCompared = rows.find((row) => COMPARED.includes(row.key));
   const body = rows.map((row) => `<tr class="${COMPARED.includes(row.key) ? 'key' : ''}${row === firstCompared ? ' sep' : ''}"><th scope="row">${esc(s.row[row.key])}</th>`
-    + `${cell(row.with)}${cell(row.without)}${diffCell(row.diff)}</tr>`).join('');
+    + `${cell(row.with, row.key)}${cell(row.without, row.key)}${diffCell(row.diff)}</tr>`).join('');
   const note = s.endNote({ scan: r.inp.args.scan, stay: r.inp.args.stay, transfer: r.sched.without.events.some((e) => e.key === 'transferLeaves') });
   $('raceLanes').innerHTML = `<p class="sum-title">${esc(s.tableTitle(wallTime(r.sched.start - config.clock.assessMin, r.inp.args.s, r.clock)))}</p><table class="sum-table"><thead>${head}</thead><tbody>${body}</tbody></table>`
     + (mode === 'below' ? '' : `<p class="sum-note">${esc(note)}</p>${explainers(s, r)}`);
