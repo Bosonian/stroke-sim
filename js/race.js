@@ -1,7 +1,7 @@
 // The race: the same ambulance with the prehospital test (red) and without it (grey), minute by minute.
 // Pure functions (spec docs/superpowers/specs/2026-10-21-race-design.md). Minutes after departure; drive times
 // are given at k = 1 and multiplied by k; the test time and the waits (scan, stay at the stroke unit) are not.
-import { resultMinute, splitRoute } from './story.js?v=29';
+import { resultMinute, splitRoute } from './story.js?v=30';
 
 const TREATS = { below: [], t71: ['bp'], t81: ['bp'], t91: ['bp', 'reversal'] };
 const PREHOSPITAL = { below: [], t71: [], t81: ['bp'], t91: ['bp', 'reversal'] };
@@ -21,9 +21,11 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   treats.forEach((key) => wo.events.push({ key, min: su + scan }));
   if (transfer) {
     const ns = su + stay + suNs * k;
-    wo.events.push({ key: 'transferLeaves', min: su + stay }, { key: 'ns', min: ns });
+    wo.events.push({ key: 'transferLeaves', min: su + stay }, { key: 'ns', min: ns }, { key: 'decision', min: ns, untimed: true }); // scan and decision follow there; no source for how long
     wo.legs.push({ from: su + stay, to: ns, route: 'transfer' });
   }
+
+  if (mode === 'same') wo.events.push({ key: 'decision', min: su + scan }); // surgery or conservative: decided at a scan where there is neurosurgery
 
   // with the test
   const wi = { events: [{ key: 'drawn', min: -s }, { key: 'depart', min: 0 }, { key: 'result', min: r }], legs: [] };
@@ -31,11 +33,11 @@ export function raceSchedule({ s, A, k, tier, mode, tSu, suNs, nsDirect, pNs, sc
   if (mode === 'turn') {
     arrive = r === 0 ? nsDirect * k : r + pNs * k;
     wi.legs = r === 0 ? [{ from: 0, to: arrive, route: 'branch' }] : [{ from: 0, to: r, route: 'su' }, { from: r, to: arrive, route: 'branch' }];
-    wi.events.push({ key: 'ns', min: arrive }, { key: 'scan', min: arrive + scan }); // imaging still happens, at neurosurgery
+    wi.events.push({ key: 'ns', min: arrive }, { key: 'scan', min: arrive + scan }, { key: 'decision', min: arrive + scan }); // imaging still happens, at neurosurgery
   } else {
     arrive = su;
     wi.legs = wo.legs.map((l) => ({ ...l }));
-    wi.events.push(...wo.events.filter((e) => ['su', 'scan', 'transferLeaves', 'ns'].includes(e.key)).map((e) => ({ ...e })));
+    wi.events.push(...wo.events.filter((e) => ['su', 'scan', 'transferLeaves', 'ns', 'decision'].includes(e.key)).map((e) => ({ ...e })));
   }
   treats.forEach((key) => {
     if (PREHOSPITAL[tier].includes(key) && r < arrive + scan) wi.events.push({ key, min: r });
@@ -139,12 +141,12 @@ export function raceBlocker({ live, mode, branch, transfer = true }) {
   return null;
 }
 
-const MILESTONES = ['drawn', 'depart', 'result', 'su', 'scan', 'transferLeaves', 'ns'];
+const MILESTONES = ['drawn', 'depart', 'result', 'su', 'scan', 'transferLeaves', 'ns', 'decision'];
 
 /** End summary: milestones in time order, labelled intervals, treatment marks and differences.
  *  Minutes are rounded once, here, so the intervals add up and the differences match the time points. */
 export function summaryRows(sched) {
-  const rows = (lane) => lane.events.filter((e) => MILESTONES.includes(e.key)).map((e) => ({ key: e.key, min: Math.round(e.min) }))
+  const rows = (lane) => lane.events.filter((e) => MILESTONES.includes(e.key)).map((e) => ({ key: e.key, min: Math.round(e.min), ...(e.untimed ? { untimed: true } : {}) }))
     .sort((a, b) => a.min - b.min);
   const gaps = (ms) => {
     const at = (key) => ms.find((m) => m.key === key);
@@ -169,7 +171,7 @@ export function summaryRows(sched) {
   return { with: w, without: wo, gaps: { with: gaps(w), without: gaps(wo) }, treatments: { with: tw, without: two }, diffs };
 }
 
-const TIMELINE = ['drawn', 'result', 'first', 'scan', 'transferLeaves'];
+const TIMELINE = ['drawn', 'result', 'first', 'scan', 'transferLeaves', 'decision'];
 export const COMPARED = ['ns', 'bp', 'reversal'];
 
 /** End table. First the timeline (blood draw, result, first hospital, scan, transfer), in time order in both
@@ -191,6 +193,7 @@ export function summaryTable(sched) {
     }
     const m = ms(lane, key) || (key === 'ns' && sched.same ? { min: ms(lane, 'su').min } : null);
     // arrival at neurosurgery repeats the first-hospital row after a turn; its drive is shown there
+    if (m && m.untimed) return { min: m.min, untimed: true }; // the decision after a transfer: no time of its own
     if (m) return { min: m.min, gap: key === 'ns' && (firstOf(lane) === 'ns' || sched.same) ? null : gapTo(lane, key) };
     const t = sum.treatments[lane].find((x) => x.key === key);
     if (!t) return null;
@@ -214,22 +217,24 @@ export function summaryTable(sched) {
 export function doorWatches(sched) {
   const at = (lane, key) => sched[lane].events.find((e) => e.key === key)?.min;
   const out = [];
+  // decision: surgery or conservative is decided at this scan (the hospital has neurosurgery)
+  const decided = (lane) => sched[lane].events.some((e) => e.key === 'decision' && !e.untimed && e.min === at(lane, 'scan'));
   if (at('without', 'su') != null) {
-    out.push({ lane: 'without', arrive: at('without', 'su'), scan: at('without', 'scan'), leaves: at('without', 'transferLeaves') ?? null });
+    out.push({ lane: 'without', arrive: at('without', 'su'), scan: at('without', 'scan'), leaves: at('without', 'transferLeaves') ?? null, decision: decided('without') });
   }
   if (at('with', 'su') == null && at('with', 'ns') != null && at('with', 'scan') != null) {
-    out.push({ lane: 'with', arrive: at('with', 'ns'), scan: at('with', 'scan'), leaves: null });
+    out.push({ lane: 'with', arrive: at('with', 'ns'), scan: at('with', 'scan'), leaves: null, decision: decided('with') });
   }
   return out;
 }
 
 /** Text of a door-to-image chip at minute `min`: running until the scan, then (stroke unit before a transfer)
  *  the time there until the transfer leaves. */
-export function doorChip(min, { arrive, scan, leaves }, L, time = null) {
+export function doorChip(min, { arrive, scan, leaves, decision }, L, time = null) {
   const m = Math.max(0, Math.floor(min - arrive));
   const at = (text, t) => (time ? `${text} ${time(t)}` : text); // pinned milestones with their clock time
   if (min < scan) return L.doorToImage(m, Math.round(scan - arrive));
-  if (leaves == null) return at(L.scanDone, scan);
+  if (leaves == null) return at(decision ? L.scanDecision : L.scanDone, scan);
   return min < leaves ? `${L.organising} · ${L.stopwatch(m)}` : at(L.transferLeaves, leaves); // scan done, transfer being organised
 }
 
@@ -255,7 +260,7 @@ export function wallTime(min, s, clock) {
   return `${String(h).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 }
 
-const LAP_KEYS = ['assess', 'drawn', 'depart', 'result', 'su', 'ns', 'scan', 'bp', 'reversal', 'transferLeaves'];
+const LAP_KEYS = ['assess', 'drawn', 'depart', 'result', 'su', 'ns', 'scan', 'decision', 'bp', 'reversal', 'transferLeaves'];
 
 /** Lap list: [{ key, min, lane: 'with' | 'without' | 'both', inAmbulance? }] in time order, starting with the
  *  assessment (`assessMin` before the blood draw); a milestone both dots reach at the same minute appears once. */
@@ -271,6 +276,7 @@ export function laps(sched, assessMin) {
       if (seen.has(id)) { seen.get(id).lane = 'both'; continue; }
       const lap = { key: e.key, min: e.min, lane };
       if ((e.key === 'bp' || e.key === 'reversal') && e.min < firstDoor) lap.inAmbulance = true;
+      if (e.untimed) lap.untimed = true;
       seen.set(id, lap);
       out.push(lap);
     }

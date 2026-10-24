@@ -1,7 +1,7 @@
 // National view: every 1 km square coloured as in the paper's Figure 2 (latest blood draw that still beats the
 // ambulance to the nearest stroke unit), with squares where the chosen blood-draw time is too late greyed.
 // Drawn into a Web Mercator image for the map; colours from src/figures.py (DRAW_COL, EXCLUDED_GREY).
-import { latestDraw, leadTime } from './story.js?v=29';
+import { latestDraw, leadTime } from './story.js?v=30';
 
 /** Colour by the latest blood draw (s) that still works: 15 = only on schedule, 0 = even at departure. */
 export const DRAW_COLORS = { 15: '#D55E00', 10: '#E69F00', 5: '#F0E442', 0: '#56B4E9' };
