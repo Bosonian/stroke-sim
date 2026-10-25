@@ -14,7 +14,6 @@ export function decide(look, shown, cfg) {
     target,
     options: look,
     detourMin: look[target].t - look.su.t,
-    fpKey: !tier.positive ? null : shown === 't71' ? 'fp71' : 'fpHigher',
   };
 }
 

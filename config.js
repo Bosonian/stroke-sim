@@ -20,11 +20,8 @@ export const config = {
     t91: { positive: true, actions: ['ns', 'bp', 'reversal'] },
   },
   model: {
-    // author's figures for the ICH-probability model (GFAP + clinical parameters)
-    specificity: 97,
-    ppv: 90,
     bands: { low: '< 25 %', moderate: '25–49 %', high: '≥ 50 %' },
-    source: 'Unpublished model; specificity and PPV are figures provided by the study author, not yet peer reviewed.',
+    source: 'Teaching simulation. No diagnostic accuracy is claimed; iGFAP is research software, not CE-marked and not for clinical decisions.',
   },
   doorToImaging: {
     // arrival to start of CT/MRI, 1,628 EMS patients with suspected stroke, 3 Düsseldorf stroke centres, 2021-22

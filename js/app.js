@@ -425,7 +425,7 @@ function update() {
   const tier = config.tiers[state.result];
   $('decision').dataset.tier = state.result;
   $('tierLine').textContent = state.result === 'below' ? s.tierBelow : `ICH ${s.results[state.result]}`;
-  $('fpLine').textContent = tier.positive ? s[state.result === 't71' ? 'fp71' : 'fpHigher'](config.model.ppv) : '';
+  $('fpLine').textContent = '';
   $('stayLine').textContent = `${s.stayNote(config.stay)} ${config.stay.source}. ${config.stay.context}`;
   $('combinedLine').textContent = tier.positive && !config.combinedRoutes ? s.combinedUnavailable : '';
 
