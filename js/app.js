@@ -1138,6 +1138,14 @@ function bind() {
     if (ui.race && !ui.race.done) return skipRace();
     return startRace();
   });
+  // embedded on igfap.eu: keys stay inside this frame, so tell the host page about Esc
+  if (window.parent !== window) {
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || ui.picking || $('aboutDlg').open) return;
+      if (e.target && e.target.tagName === 'INPUT') return;
+      window.parent.postMessage({ type: 'stroke-sim:escape' }, '*');
+    });
+  }
   // presenter keys: Space = play / skip, 1-4 = blood-draw time (not while typing or on a button)
   document.addEventListener('keydown', (e) => {
     const tag = e.target && e.target.tagName;
